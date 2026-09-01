@@ -21,6 +21,8 @@ implementation choices land; don't let them go stale once code exists.
   and `docs/decisions-log.md`
 - Database: **PostgreSQL** via EF Core
 - ORM: EF Core
+- PDF: **QuestPDF** — rendered **on demand**, never stored (`pdf_url` points at
+  the download endpoint); synchronous. See `docs/decisions-log.md`.
 - Frontend: **not yet decided**
 
 ## Solution structure

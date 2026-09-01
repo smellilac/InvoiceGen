@@ -12,23 +12,30 @@ code/infrastructure exists, and note where reality diverges from the plan.
 2. **Main page**: calls `GET /document-types` (public, no auth) to render
    the "what do you want to create?" picker.
 3. **Create document**: authenticated `POST /documents` with the filled-out
-   form. The backend validates the request, persists a `Document` record,
-   renders it to PDF, stores the PDF (location TBD — see below), and
-   returns the `Document` JSON (including a `pdf_url`) — it does not stream
-   the PDF back directly in this response.
+   form. The backend validates the request, computes the totals (per-line
+   tax then summed — see `docs/conventions.md`), persists a `Document` plus
+   its `line_items`, and returns the `Document` JSON (including a `pdf_url`).
+   No PDF is rendered or stored at create time — `pdf_url` just points at the
+   download endpoint, which renders on demand.
 4. **History**: `GET /documents` (paginated, filterable by `type`, ordered
    newest-first) backs the user's document list/history view.
-5. **Download**: `GET /documents/{id}/pdf` streams the actual PDF bytes,
-   fetched separately from the create/list/get calls that return JSON.
+5. **Download**: `GET /documents/{id}/pdf` renders the PDF **on demand** with
+   **QuestPDF** and streams the bytes. Nothing is stored — the PDF is a fresh
+   projection of the document's data on every request. Rendering is
+   **synchronous** (inline in the request), no background job.
+
+## PDF rendering (decided — see `docs/decisions-log.md`)
+
+- **Library:** QuestPDF (code-first, free at this scale).
+- **Storage:** none — rendered on demand, never persisted. `pdf_url` points at
+  `GET /documents/{id}/pdf`.
+- **Timing:** synchronous. Revisit a background job only if rendering ever
+  becomes slow enough to hurt latency (complex templates) — not a Phase 1 need.
+- **`status`:** `draft`/`generated` is largely nominal now, since a PDF is
+  always available on demand.
 
 ## Not yet decided
 
-- Where rendered PDFs are stored (local disk, blob storage, etc.) and how
-  `pdf_url` is served from there.
-- Whether PDF rendering happens synchronously inside `POST /documents` or is
-  offloaded to a background job (relevant if rendering ever becomes slow
-  enough to matter — not expected to be an issue for simple documents, but
-  worth revisiting if templates get complex).
 - Frontend framework/hosting.
 - Deployment/infrastructure — nothing here yet; `docs/infrastructure.md`
   doesn't exist yet because there's nothing to document.
