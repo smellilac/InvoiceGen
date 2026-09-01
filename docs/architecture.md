@@ -15,11 +15,19 @@ code/infrastructure exists, and note where reality diverges from the plan.
    form. The backend validates the request, computes the totals (per-line
    tax then summed — see `docs/conventions.md`), persists a `Document` plus
    its `line_items`, and returns the `Document` JSON (including a `pdf_url`).
-   No PDF is rendered or stored at create time — `pdf_url` just points at the
-   download endpoint, which renders on demand.
-4. **History**: `GET /documents` (paginated, filterable by `type`, ordered
-   newest-first) backs the user's document list/history view.
-5. **Download**: `GET /documents/{id}/pdf` renders the PDF **on demand** with
+   If the request carries a `customer_id`, the handler validates it belongs
+   to the caller and isn't soft-deleted (else **422**), and — when `to` is
+   omitted — snapshots the customer's current name/address into `to`. That
+   text is then frozen: later customer edits never touch it (see
+   `docs/decisions-log.md`). No PDF is rendered or stored at create time —
+   `pdf_url` just points at the download endpoint, which renders on demand.
+4. **History**: `GET /documents` (paginated, filterable by `type` and
+   `customer_id`, ordered newest-first) backs the user's document
+   list/history view.
+5. **Customers**: authenticated CRUD at `/customers` (`GET` ordered by `name`
+   for the document-form picker). Delete is soft — the row stays so historical
+   documents keep resolving. See `docs/decisions-log.md`.
+6. **Download**: `GET /documents/{id}/pdf` renders the PDF **on demand** with
    **QuestPDF** and streams the bytes. Nothing is stored — the PDF is a fresh
    projection of the document's data on every request. Rendering is
    **synchronous** (inline in the request), no background job.

@@ -193,6 +193,45 @@ form measurably simplifies something.
 
 ---
 
+## Documents snapshot customer info; customers are soft-deleted
+
+**Decision (0.3.0):** The Customers resource landed (previously deferred). Two
+rules govern how it interacts with documents:
+
+- A `Document`'s `to` (customer name/address) is a **frozen snapshot** taken
+  at creation time — **not** a live view of the `Customer` record.
+  `customer_id` is stored only as a reference for filtering/lookup (e.g. "list
+  all invoices for this customer"). If `customer_id` is given and `to` is
+  omitted on `POST /documents`, `to` is auto-filled from the customer's
+  current info *then*; an explicit `to` always wins. Editing the customer
+  later never rewrites the `to` on documents already created.
+- Deleting a customer is a **soft delete** (a `deleted_at` timestamp, not a
+  row removal). A soft-deleted customer disappears from `GET /customers` and
+  can no longer be referenced by new documents (`POST /documents` with its
+  `customer_id` → **422**), but existing documents keep their frozen `to` and
+  their `customer_id`, so historical records and
+  `GET /documents?customer_id=...` filtering still work.
+
+**Why (snapshot):** An invoice is a legal/financial record of what was billed
+at a point in time. If a customer moves and updates their saved address, past
+invoices must still show the address that was correct when issued — not
+silently rewrite history. This is the same reasoning as "line items are stored
+on the document, not recomputed from a live product catalog" (see above), and
+matches how real invoicing/accounting software behaves.
+
+**Why (soft delete):** A hard delete would either orphan
+`Document.customer_id` or force cascading deletes that destroy financial
+history — both worse than the small complexity cost of a `deleted_at` flag.
+
+**Why Payments stayed deferred but Customers didn't:** Customers is a concrete,
+low-risk convenience with a clear shape. Payments was scoped *down* to "not
+needed yet" rather than designed — there's no near-term need to collect money,
+and doing it right (processor integration, PCI, webhook signatures,
+idempotency, refunds) is a large, speculative effort until a real use case
+exists. See `x-customer-policy` and `x-future-phases` in `docs/openapi.yaml`.
+
+---
+
 ## PDF library is QuestPDF
 
 **Decision:** PDFs are generated with **QuestPDF** (built in C# code, not an
