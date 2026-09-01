@@ -100,3 +100,76 @@ revocable (`/auth/logout`), and be renewable without re-entering a password
 
 **Not yet decided:** Password reset and email verification flows are
 missing — flagged in `docs/api-contract.md` as a known gap, not designed yet.
+
+---
+
+## User store uses ASP.NET Core Identity, not a custom user table
+
+**Decision:** User management (the user store, password hashing, and later
+account features) is built on **ASP.NET Core Identity**. Our user entity
+extends Identity's base user (`IdentityUser<Guid>`) with the business fields
+from the OpenAPI `User` schema (`business_name`, `business_address`,
+`logo_url`, `default_currency`, `created_at`).
+
+**Why:** Email confirmation and 2FA are on the roadmap (not "maybe someday" —
+a real plan). Those are exactly what Identity provides out of the box, along
+with password reset and account lockout. Adopting Identity now means those
+features are mostly a matter of turning them on later, and avoids a painful
+schema/data migration from a hand-rolled store to Identity down the line.
+
+**Rejected alternative — custom user store + borrowed `PasswordHasher<T>`:**
+This was the earlier lean (see the previous note in `docs/data-layer.md`),
+and it's genuinely lighter *when none of Identity's features are wanted* —
+2 clean tables instead of Identity's ~7. It was rejected specifically
+because the deferred features (2FA, email) are actually planned; building
+them by hand later is security-sensitive work (safe email-confirm links,
+2FA codes) and Identity does it for us. If those plans were dropped, the
+custom store would become the better choice again.
+
+**Consequence:** Identity brings its own tables (`AspNetUsers`, `AspNetRoles`,
+etc.). We won't use roles yet (see the authorization note below), but the
+tables exist. This supersedes the custom `users` table sketch that an
+earlier version of `docs/data-layer.md` described.
+
+---
+
+## Tokens: short-lived JWT access token + DB-backed refresh token
+
+**Decision:** Login issues two tokens:
+
+- **Access token** — a JWT, short-lived (~15 min), **not stored server-side**,
+  validated by signature on every request (stateless).
+- **Refresh token** — long-lived (days), **stored (hashed) in PostgreSQL**,
+  sent only to `/auth/refresh` to mint a new access token.
+
+ASP.NET Identity handles the user store and passwords; the JWT layer sits on
+top of it. Identity + JWT is a deliberate pairing here, not a conflict —
+Identity is not used for cookie sessions.
+
+**Why JWT alone isn't enough:** a stateless JWT can't be cancelled — there's
+no server record to delete, so it stays valid until it expires. But the API
+contract requires `/auth/logout` to *actually* revoke a session (a refresh
+token that still works after logout is a real bug, per `docs/conventions.md`).
+The refresh token is the deliberately-stateful piece that makes revocation
+possible: logout marks its row revoked and it stops working immediately.
+
+The short access-token lifetime keeps the stateless, uncancellable token's
+exposure window small; the refresh token keeps the user logged in without
+re-entering a password, and keeps logout real. See `docs/data-layer.md`
+`refresh_tokens` for why the token is stored hashed, not in plaintext.
+
+---
+
+## Authorization is claims-based on `user_id`, no roles
+
+**Decision:** Authorization is (1) "is the request authenticated?" via
+`.RequireAuthorization()`, and (2) "does this row belong to the caller?" via
+a `user_id` filter inside handlers. The `user_id` travels as a claim in the
+access-token JWT. No roles, no policies, no `AuthorizationHandler`.
+
+**Why:** The app has exactly one access rule — a user may only touch their
+own documents. That's a data-filtering concern (`WHERE user_id = @caller`),
+not a permission-matrix concern. A non-owner gets **404**, not 403 — matching
+the API contract, which hides whether the resource exists at all. Roles and
+policies would be ceremony for a system with a single rule and no privilege
+levels; add them only if an admin/multi-tier concept ever appears.
