@@ -1,0 +1,652 @@
+openapi: 3.0.3
+info:
+  title: Invoice App API
+  version: "0.2.0"
+  description: |
+    Original API specification for a new invoicing web app. It is INSPIRED BY
+    invoice-generator.com (same idea: fill a form, pick a document type, get a
+    professional PDF) but is a separate, independent product with its own
+    backend, its own data model, and its own UI — nothing here calls or depends
+    on invoice-generator.com.
+
+    Scope of this version (Phase 1, as agreed with the product owner):
+      1. User accounts with full login (JWT), not bare API keys.
+      2. A "document types" listing so the main page can show the user a choice
+         of what to generate (invoice, receipt, quote, ...).
+      3. Creating and downloading documents (PDF) by filling out a form.
+      4. Because documents belong to a logged-in user, they are also listed here
+         as a lightweight "history" (list/get/delete) — this falls out naturally
+         from having accounts, even though it wasn't explicitly requested.
+
+    Explicitly OUT of scope for this version (left for a later phase — see the
+    x-future-phases block at the bottom of this file): a standalone Customers
+    resource, payment collection/webhooks, and emailing documents directly to
+    customers. Add those as new paths/schemas when that phase starts; this file
+    is written so they slot in without breaking what's here (e.g. `Document`
+    already has a `customer` object shape that could later become a real
+    Customers resource reference).
+
+    Changelog:
+      0.2.0 — Resolved three open design questions from the spec review:
+        - Money fields now use the reusable `MonetaryAmount` schema and are
+          documented as decimal, not float/double (target stack: .NET Core —
+          map to C#'s `decimal`, never `double`; verified with a real .NET 8
+          program that `0.1m + 0.2m == 0.3m` exactly, while the `double`
+          equivalent does not). See `x-rounding-policy` below for the full
+          rationale, including a worked example.
+        - `number` (the document/invoice number) is confirmed as a fully
+          optional, free-text field that the API never generates, validates
+          for uniqueness, or mutates — the user (or the frontend, as a
+          suggestion) is responsible for it. See its field description.
+        - Documented the chosen tax-rounding policy (per line item, then
+          summed) explicitly, since it's a real business decision, not a
+          technical default.
+
+security:
+  - BearerAuth: []
+
+x-rounding-policy:
+  numeric_type: >-
+    All monetary fields (see the `MonetaryAmount` schema) MUST be handled as
+    fixed-point decimals server-side — in .NET Core, that means the C#
+    `decimal` type everywhere (models, EF Core entities/DB columns, DTOs),
+    never `double` or `float`. This was verified concretely: in real C#,
+    `0.1m + 0.2m` equals exactly `0.3m`, while the same expression with
+    `double` produces `0.30000000000000004`. JSON itself has no decimal
+    type, but .NET's JSON serializer round-trips `decimal` through JSON
+    number tokens exactly (it parses the token text directly into
+    `decimal`, not via `double`), so no extra encoding (e.g. strings or
+    integer minor units) is needed for a .NET-to-.NET boundary.
+  tax_rounding: >-
+    Tax is calculated PER LINE ITEM (line_total * tax_percent / 100), each
+    line's tax individually rounded to 2 decimal places using round-half-
+    away-from-zero (.NET: MidpointRounding.AwayFromZero), and THEN the
+    already-rounded per-line tax amounts are summed to get the document's
+    total tax. This was a deliberate choice, not a technical default: a
+    reader looking at the document line-by-line expects each line's tax to
+    look individually correct, the way a person calculating it by hand
+    would show it — at the cost of occasionally differing by 1 minor unit
+    from "tax computed once on the subtotal."
+    Worked example (verified in real C#, not hypothetical): subtotal
+    $191.78 at 8.5% tax — per-line rounding gives $5.10 + $3.87 + $7.34 =
+    $16.31 total tax; rounding once on the subtotal instead gives $16.30.
+    Both are "correct" methods; this API always uses the per-line one, so
+    implementations must apply it consistently or totals will mismatch
+    what a client re-derives from the individual line items.
+
+servers:
+  - url: https://api.example.com/v1
+    description: Replace with your real API base URL once deployed.
+
+tags:
+  - name: auth
+    description: Account registration, login, and session/token management
+  - name: document-types
+    description: The list of generatable document types, for the main page picker
+  - name: documents
+    description: Create, list, retrieve, download, and delete generated documents
+
+paths:
+  # ---------------------------------------------------------------- AUTH ----
+  /auth/register:
+    post:
+      operationId: registerUser
+      tags: [auth]
+      summary: Create a new account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: An account with this email already exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      operationId: loginUser
+      tags: [auth]
+      summary: Log in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Incorrect email or password.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [auth]
+      summary: Exchange a refresh token for a new access token
+      description: |
+        Access tokens are short-lived (see `expires_in` on AuthResponse).
+        Call this before/when one expires, using the longer-lived refresh
+        token, instead of asking the user to log in again.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: Refresh token is invalid, expired, or was revoked (e.g. by logout).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/logout:
+    post:
+      operationId: logoutUser
+      tags: [auth]
+      summary: Revoke the current refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '204':
+          description: Logged out — the refresh token no longer works.
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get the logged-in user's profile
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: updateCurrentUser
+      tags: [auth]
+      summary: Update the logged-in user's profile (e.g. default business info)
+      description: |
+        Lets a user save their own business name/address/logo once, so it can
+        pre-fill the "Who is this from?" field on the document form instead of
+        retyping it every time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # ------------------------------------------------------- DOCUMENT TYPES ----
+  /document-types:
+    get:
+      operationId: listDocumentTypes
+      tags: [document-types]
+      summary: List the document types the main page lets a user choose from
+      description: |
+        Public, unauthenticated — the landing page calls this to render its
+        "what do you want to create?" choices (Invoice, Receipt, Quote, ...)
+        without hardcoding the list in the frontend.
+      security: []
+      responses:
+        '200':
+          description: Available document types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentTypeInfo'
+
+  # ----------------------------------------------------------- DOCUMENTS ----
+  /documents:
+    post:
+      operationId: createDocument
+      tags: [documents]
+      summary: Create a document by submitting the filled-out form
+      description: |
+        Validates and stores the submitted form data, renders it to PDF, and
+        returns the saved document's record (including a URL to download the
+        PDF). Unlike invoice-generator.com's API, this does NOT stream the PDF
+        directly back from this call — the document is persisted first so it
+        shows up in the user's history, and the PDF is fetched separately via
+        `GET /documents/{id}/pdf`. This keeps the create response fast and JSON,
+        which is what a web UI wants (it can render a summary immediately and
+        offer a "Download PDF" button).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentRequest'
+      responses:
+        '201':
+          description: Document created and rendered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List the logged-in user's documents (history)
+      description: >-
+        Ordered by `created_at` descending by default (most recent first).
+        The frontend relies on this order for its "suggest the next
+        document number" convenience — see CreateDocumentRequest.number —
+        by requesting `per_page=1` for the relevant type.
+      parameters:
+        - name: type
+          in: query
+          description: Filter by document type.
+          schema:
+            $ref: '#/components/schemas/DocumentType'
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Paginated list of documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /documents/{documentId}:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      operationId: getDocument
+      tags: [documents]
+      summary: Get one document's details
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteDocument
+      tags: [documents]
+      summary: Remove a document from history
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /documents/{documentId}/pdf:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      operationId: downloadDocumentPdf
+      tags: [documents]
+      summary: Download the rendered PDF
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Access token returned by `/auth/login`, `/auth/register`, or
+        `/auth/refresh`. Send as header "Authorization" with value
+        "Bearer <access_token>".
+
+  parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or expired access token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Resource does not exist, or does not belong to the current user.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ValidationError:
+      description: The request body failed validation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "invalid_credentials"
+            message:
+              type: string
+              example: "Incorrect email or password."
+
+    ValidationErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, fields]
+          properties:
+            code: { type: string, example: "validation_failed" }
+            message: { type: string, example: "One or more fields are invalid." }
+            fields:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string, example: "items[0].unit_cost" }
+                  message: { type: string, example: "must be a positive number" }
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+        business_name: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        business_name: { type: string }
+        business_address: { type: string, description: "Multiline, used to pre-fill the 'from' field." }
+        logo_url: { type: string, format: uri }
+        default_currency: { type: string, example: "EUR" }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        business_name: { type: string, nullable: true }
+        business_address: { type: string, nullable: true }
+        logo_url: { type: string, format: uri, nullable: true }
+        default_currency: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    TokenPair:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, example: "Bearer" }
+        expires_in: { type: integer, description: "Access token lifetime in seconds.", example: 900 }
+
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+
+    DocumentType:
+      type: string
+      description: Which kind of document this is.
+      enum:
+        - invoice
+        - receipt
+        - credit_note
+        - quote
+        - estimate
+        - proforma_invoice
+        - purchase_order
+        - statement
+        - timesheet
+        - work_order
+        - packing_slip
+      default: invoice
+
+    DocumentTypeInfo:
+      type: object
+      description: Metadata the main page uses to render one "what to generate" choice.
+      properties:
+        id:
+          $ref: '#/components/schemas/DocumentType'
+        name: { type: string, example: "Invoice" }
+        description: { type: string, example: "Bill a customer for products or services." }
+        icon: { type: string, description: "Icon identifier for the frontend.", example: "invoice" }
+
+    MonetaryAmount:
+      type: number
+      description: >-
+        A decimal monetary amount (never a percentage). JSON has no native
+        decimal type, so on the wire this is a plain JSON number — but it
+        MUST be deserialized into a fixed-point decimal type server-side
+        (.NET: `decimal`, never `double`/`float`) to avoid floating-point
+        rounding errors. See the root-level `x-rounding-policy` for the
+        full rationale and a worked example.
+      x-dotnet-type: decimal
+      example: 99.00
+
+    LineItem:
+      type: object
+      required: [name, quantity, unit_cost]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        quantity: { type: number }
+        unit_cost:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+        reference: { type: string }
+
+    CreateDocumentRequest:
+      type: object
+      required: [type, to, date, items]
+      description: The submitted form. `from` may be omitted if the user has set a default business profile via `PATCH /auth/me`.
+      properties:
+        type:
+          $ref: '#/components/schemas/DocumentType'
+        from:
+          type: string
+          description: "Billing organization's name/address. Falls back to the user's saved business profile if omitted."
+        to:
+          type: string
+          description: "Customer's name/address (multiline)."
+        date: { type: string, format: date }
+        due_date: { type: string, format: date, nullable: true }
+        number:
+          type: string
+          nullable: true
+          description: >-
+            Optional free-text document number/reference, e.g. "INV-0042"
+            or a custom scheme like "NBL-1321-DW". Stored exactly as
+            submitted — the API never auto-generates it, validates it for
+            uniqueness, or otherwise mutates it; if omitted it is simply
+            left blank on the document.
+            The FRONTEND may pre-fill this field as a convenience (not an
+            API concern) by taking the user's most recent document of the
+            same type — `GET /documents?type=...&per_page=1` is ordered
+            newest-first for exactly this purpose — and incrementing a
+            trailing numeric run with a conservative regex such as
+            `^(.*?)(\d+)$` (so "INV-0042" -> "INV-0043"). If the previous
+            number doesn't match that pattern (e.g. "NBL-1321-DW", where
+            the digits aren't at the end), there is no reliable way to
+            guess "the next one" — the frontend should leave the field
+            blank rather than insert a wrong guess.
+        currency: { type: string, default: "USD" }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/LineItem' }
+        tax_percent:
+          type: number
+          default: 0
+          description: 'e.g. 8.5 for 8.5%. See x-rounding-policy for how this is applied (per line item, not on the subtotal).'
+        discount_percent: { type: number, default: 0 }
+        shipping_amount:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          default: 0
+        notes: { type: string }
+        terms: { type: string }
+        amount_paid:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          default: 0
+
+    Document:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type:
+          $ref: '#/components/schemas/DocumentType'
+        status:
+          type: string
+          enum: [draft, generated]
+          description: "Phase 1 only distinguishes 'saved but not rendered yet' vs 'PDF ready'. Statuses like sent/paid belong to a later phase (see x-future-phases)."
+        number:
+          type: string
+          nullable: true
+          description: 'Exactly what the user submitted (or null if left blank) — see CreateDocumentRequest.number for the full policy. Never generated or altered by the API.'
+        from: { type: string }
+        to: { type: string }
+        currency: { type: string }
+        subtotal:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+        total:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+        amount_paid:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+        balance_due:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+        pdf_url:
+          type: string
+          format: uri
+          description: "Same as GET /documents/{id}/pdf — provided here for convenience."
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DocumentList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Document' }
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+
+x-future-phases:
+  - name: Customers
+    description: >-
+      A standalone Customers resource (id, name, address, email) that
+      CreateDocumentRequest.to would reference by customer_id instead of a
+      free-text string, so a customer's info is entered once and reused.
+  - name: Payments & webhooks
+    description: >-
+      Endpoints to record payments against a document, plus a webhook
+      subscription mechanism so external systems are notified on payment
+      or status change.
+  - name: Email delivery
+    description: >-
+      POST /documents/{id}/send — email the PDF directly to the customer,
+      mirroring the "Save & Send" button on invoice-generator.com.
+  - name: UBL / e-invoice export
+    description: >-
+      GET /documents/{id}/ubl — structured XML export, mirroring
+      invoice-generator.com's /ubl endpoint, once e-invoicing is needed.
