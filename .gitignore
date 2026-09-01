@@ -485,3 +485,4 @@ $RECYCLE.BIN/
 settings.local.json
 InvoiceGen.Api.http
 /src/InvoiceGen.Api/Properties/launchSettings.json
+FIXES.md
