@@ -1,6 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="ErrorOr" Version="2.1.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\InvoiceGen.Domain\InvoiceGen.Domain.csproj" />
   </ItemGroup>
 

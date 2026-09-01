@@ -48,6 +48,11 @@ tests/
 
 **Reference direction:** Domain ← Application ← Infrastructure ← Api
 
+## Error handling
+
+Use `ErrorOr<T>` from the `ErrorOr` library for all result/error handling.
+Do not introduce custom Result or discriminated-union wrappers.
+
 ## Non-negotiable conventions
 
 These came out of real bugs/decisions during spec design, not arbitrary
