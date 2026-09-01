@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.2.0"
+  version: "0.3.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -19,12 +19,9 @@ info:
          from having accounts, even though it wasn't explicitly requested.
 
     Explicitly OUT of scope for this version (left for a later phase — see the
-    x-future-phases block at the bottom of this file): a standalone Customers
-    resource, payment collection/webhooks, and emailing documents directly to
-    customers. Add those as new paths/schemas when that phase starts; this file
-    is written so they slot in without breaking what's here (e.g. `Document`
-    already has a `customer` object shape that could later become a real
-    Customers resource reference).
+    x-future-phases block at the bottom of this file): payment collection/
+    webhooks, and emailing documents directly to customers. (Customers, as of
+    0.3.0, is no longer deferred — see below.)
 
     Changelog:
       0.2.0 — Resolved three open design questions from the spec review:
@@ -41,6 +38,13 @@ info:
         - Documented the chosen tax-rounding policy (per line item, then
           summed) explicitly, since it's a real business decision, not a
           technical default.
+      0.3.0 — Added the Customers resource (was previously deferred).
+        Payments/webhooks and Email delivery remain explicitly out of scope
+        for this round — Payments in particular was scoped down to "not
+        needed yet" rather than designed, since there's no near-term need
+        to collect money through this system. See `x-customer-policy` for
+        the one real design decision this introduced: documents snapshot a
+        customer's info at creation time rather than staying live-linked.
 
 security:
   - BearerAuth: []
@@ -74,6 +78,34 @@ x-rounding-policy:
     implementations must apply it consistently or totals will mismatch
     what a client re-derives from the individual line items.
 
+x-customer-policy:
+  snapshot_not_live_link: >-
+    A Document's `to` field is a frozen snapshot of the customer's
+    name/address AT THE TIME THE DOCUMENT WAS CREATED — it is NOT a live
+    view of the current Customer record. `customer_id` on a Document is
+    kept only as a reference for filtering/lookup (e.g. "show me all
+    invoices for this customer"); it does not mean the document's displayed
+    `to` text updates if the customer's address is edited later.
+  why: >-
+    An invoice is a legal/financial record of what was billed at a point in
+    time. If a customer moves and updates their saved address, past
+    invoices must still show the address that was actually correct when
+    they were issued — not silently rewrite history. This matches how real
+    invoicing/accounting software behaves, and is the same reasoning as
+    "line items are stored on the document, not recomputed from a live
+    product catalog."
+  deletion: >-
+    Deleting a Customer is a SOFT delete (a `deleted_at` timestamp, not a
+    row removal). A deleted customer disappears from `GET /customers` and
+    can no longer be used for new documents (`customer_id` on
+    `POST /documents` referencing a deleted customer returns a 422
+    validation error) — but existing documents keep their frozen `to` text
+    and their `customer_id` reference untouched, so historical records and
+    "list documents for this customer" filtering still work. A hard delete
+    was rejected: it would either orphan `Document.customer_id` or force
+    cascading deletes that destroy financial history, which is worse than
+    the small complexity cost of a soft-delete flag.
+
 servers:
   - url: https://api.example.com/v1
     description: Replace with your real API base URL once deployed.
@@ -83,6 +115,8 @@ tags:
     description: Account registration, login, and session/token management
   - name: document-types
     description: The list of generatable document types, for the main page picker
+  - name: customers
+    description: Saved customer records that documents can reference instead of free text
   - name: documents
     description: Create, list, retrieve, download, and delete generated documents
 
@@ -253,6 +287,122 @@ paths:
                 items:
                   $ref: '#/components/schemas/DocumentTypeInfo'
 
+  # ----------------------------------------------------------- CUSTOMERS ----
+  /customers:
+    post:
+      operationId: createCustomer
+      tags: [customers]
+      summary: Save a new customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    get:
+      operationId: listCustomers
+      tags: [customers]
+      summary: List the logged-in user's saved customers
+      description: >-
+        Excludes soft-deleted customers. Ordered by `name` ascending by
+        default (customers are picked from a list while filling out a
+        document form, so alphabetical is more useful here than
+        newest-first).
+      parameters:
+        - name: search
+          in: query
+          description: Case-insensitive substring match against customer name.
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Paginated list of customers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /customers/{customerId}:
+    parameters:
+      - $ref: '#/components/parameters/CustomerId'
+    get:
+      operationId: getCustomer
+      tags: [customers]
+      summary: Get one customer's details
+      responses:
+        '200':
+          description: The customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateCustomer
+      tags: [customers]
+      summary: Update a customer's details
+      description: >-
+        Only affects future documents (or the picker UI) — does NOT alter
+        the `to` text on documents already created from this customer. See
+        `x-customer-policy` at the root of this spec.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      operationId: deleteCustomer
+      tags: [customers]
+      summary: Soft-delete a customer
+      description: >-
+        Sets `deleted_at`; does not remove the row. The customer stops
+        appearing in `GET /customers` and can no longer be referenced by
+        new documents, but documents already created from it are
+        unaffected — see `x-customer-policy`.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # ----------------------------------------------------------- DOCUMENTS ----
   /documents:
     post:
@@ -301,6 +451,10 @@ paths:
           description: Filter by document type.
           schema:
             $ref: '#/components/schemas/DocumentType'
+        - name: customer_id
+          in: query
+          description: Filter to documents created from this customer (works even after the customer is soft-deleted).
+          schema: { type: string, format: uuid }
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
@@ -379,6 +533,13 @@ components:
   parameters:
     DocumentId:
       name: documentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CustomerId:
+      name: customerId
       in: path
       required: true
       schema:
@@ -525,6 +686,48 @@ components:
       x-dotnet-type: decimal
       example: 99.00
 
+    Customer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email, nullable: true }
+        address: { type: string, nullable: true, description: Multiline. }
+        phone: { type: string, nullable: true }
+        notes: { type: string, nullable: true, description: 'Private notes, not shown on documents.' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateCustomerRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        address: { type: string, description: Multiline. }
+        phone: { type: string }
+        notes: { type: string }
+
+    UpdateCustomerRequest:
+      type: object
+      description: All fields optional — send only what's changing.
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        address: { type: string }
+        phone: { type: string }
+        notes: { type: string }
+
+    CustomerList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Customer' }
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+
     LineItem:
       type: object
       required: [name, quantity, unit_cost]
@@ -548,7 +751,22 @@ components:
           description: "Billing organization's name/address. Falls back to the user's saved business profile if omitted."
         to:
           type: string
-          description: "Customer's name/address (multiline)."
+          description: >-
+            Customer's name/address (multiline). If `customer_id` is also
+            given and `to` is omitted, `to` is auto-filled from that
+            customer's current name/address at creation time. An explicit
+            `to` always wins over the customer's saved info. Once created,
+            this text is frozen on the document — see `x-customer-policy`.
+        customer_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Optional reference to a saved Customer (`POST /customers`).
+            Purely for convenience (auto-filling `to`) and later filtering
+            (`GET /documents?customer_id=...`) — a document never requires
+            one, `to` can always just be typed as free text. Referencing a
+            customer that doesn't exist or was deleted returns a 422.
         date: { type: string, format: date }
         due_date: { type: string, format: date, nullable: true }
         number:
@@ -605,6 +823,11 @@ components:
           description: 'Exactly what the user submitted (or null if left blank) — see CreateDocumentRequest.number for the full policy. Never generated or altered by the API.'
         from: { type: string }
         to: { type: string }
+        customer_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 'Reference to the Customer this was created from, if any. Kept even after that customer is soft-deleted (see x-customer-policy) — does not imply `to` reflects the customer''s current info.'
         currency: { type: string }
         subtotal:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
@@ -632,16 +855,17 @@ components:
         total: { type: integer }
 
 x-future-phases:
-  - name: Customers
-    description: >-
-      A standalone Customers resource (id, name, address, email) that
-      CreateDocumentRequest.to would reference by customer_id instead of a
-      free-text string, so a customer's info is entered once and reused.
   - name: Payments & webhooks
     description: >-
       Endpoints to record payments against a document, plus a webhook
       subscription mechanism so external systems are notified on payment
-      or status change.
+      or status change. Explicitly scoped down (not designed) as of 0.3.0 —
+      there's no near-term need to collect money through this system, so
+      building this now would be speculative. Revisit once there's an
+      actual use case, and decide then whether it means "record that a
+      payment happened" (small) or "collect payments via a processor like
+      Stripe" (much bigger — PCI scope, webhook signature verification,
+      idempotency, refunds).
   - name: Email delivery
     description: >-
       POST /documents/{id}/send — email the PDF directly to the customer,
