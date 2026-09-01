@@ -1,11 +1,10 @@
 using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace InvoiceGen.Tests.Features.DocumentTypes;
 
-public class ListDocumentTypesTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public class ListDocumentTypesTests(TestWebAppFactory factory)
+    : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 

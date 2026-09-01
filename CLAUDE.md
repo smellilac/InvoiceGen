@@ -16,7 +16,9 @@ implementation choices land; don't let them go stale once code exists.
 - Backend: ASP.NET Core (.NET 10), C#
 - Architecture: **Clean Architecture + VSA** — Clean Architecture layers for
   separation of concerns; features organized as vertical slices within each layer
-- Auth: JWT (access + refresh token pair) — see `docs/api-contract.md`
+- Auth: **ASP.NET Core Identity** (user store + password hashing) with
+  **JWT** access + refresh tokens layered on top — see `docs/api-contract.md`
+  and `docs/decisions-log.md`
 - Database: **PostgreSQL** via EF Core
 - ORM: EF Core
 - Frontend: **not yet decided**
@@ -52,6 +54,27 @@ tests/
 
 Use `ErrorOr<T>` from the `ErrorOr` library for all result/error handling.
 Do not introduce custom Result or discriminated-union wrappers.
+
+## Auth (decided — see `docs/decisions-log.md` for the full reasoning)
+
+- **User store: ASP.NET Core Identity.** `AppUser : IdentityUser<Guid>`,
+  extended with business fields (`BusinessName`, `BusinessAddress`, `LogoUrl`,
+  `DefaultCurrency`, `CreatedAt`). Chosen over a custom store because email
+  confirmation and 2FA are planned; don't reintroduce a hand-rolled user table.
+- **Passwords:** Identity's `PasswordHasher<AppUser>` (PBKDF2). Never hand-roll
+  hashing.
+- **Tokens:** short-lived **JWT** access token (~15 min, stateless, not stored)
+  + long-lived **refresh token stored hashed in Postgres** (custom
+  `refresh_tokens` table). Logout revokes the refresh-token row server-side —
+  a refresh token that still works after logout is a bug.
+- **Authorization:** `.RequireAuthorization()` + a `user_id` claim + an
+  ownership filter (`WHERE user_id = caller`) in handlers. Non-owner → **404**,
+  not 403. No roles, no policies unless a privilege tier actually appears.
+- **JWT signing key:** via `dotnet user-secrets` in dev, env vars/secret store
+  in prod. Never commit it to `appsettings.json`.
+- Layering: entities in Domain, auth handlers + token interface in Application,
+  Identity/JWT implementations in Infrastructure, bearer config + endpoints in
+  Api. No separate auth project.
 
 ## Non-negotiable conventions
 

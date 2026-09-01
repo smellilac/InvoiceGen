@@ -1,22 +1,35 @@
-# Handoff — feature/document-types
+# Handoff — feature/auth
 
 ## Completed
-- [x] Solution scaffolded: Clean Architecture + VSA (Domain / Application / Infrastructure / Api / Tests)
-- [x] Stack confirmed: .NET 10, PostgreSQL, EF Core, ErrorOr, xUnit + WebApplicationFactory
-- [x] GET /document-types — full slice end-to-end (handler, endpoint, 6 passing integration tests)
-- [x] ErrorOr<T> adopted; custom Result<T> removed; convention documented in CLAUDE.md
-- [x] Explicit endpoint registration (no reflection scanning)
+- [x] Auth feature end-to-end: Register, Login, Refresh, Logout, GET/PATCH /auth/me
+- [x] ASP.NET Identity user store (AppUser : IdentityUser<Guid>) + business fields
+- [x] JWT access token (sub + jti) + DB-backed hashed rotating refresh token
+- [x] Account lockout (5 attempts / 5 min)
+- [x] EF Core + Npgsql + InitialAuth migration; snake_case JSON matching OpenAPI
+- [x] Secrets in user-secrets (Jwt:Key set; connection string = user to set); fail-fast key check
+- [x] 17 integration tests (WebApplicationFactory + in-memory SQLite) — all passing
+- [x] All handlers/services/endpoints/Program.cs reviewed
+- [x] Checkpoint committed: 564a785
 
 ## Pending
-- [ ] Auth feature: Register, Login, Refresh, Logout, GET /auth/me — run `/scaffold Auth` next
-- [ ] After Auth: Documents feature (Create, List, Get, GetPdf, Delete)
-- [ ] EF Core + PostgreSQL wiring (DbContext, migrations) — needed before Documents
-- [ ] PDF rendering infrastructure (InvoiceGen.Infrastructure/Pdf/)
+- [ ] USER ACTION: set connection string in user-secrets:
+      dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=invoicegen;Username=postgres;Password=postgres" --project src/InvoiceGen.Api
+- [ ] Run a real Postgres + apply migration:
+      dotnet ef database update --project src/InvoiceGen.Infrastructure --startup-project src/InvoiceGen.Api
+- [ ] Next feature: Documents (Create, List, Get, GetPdf, Delete) — needs the
+      JSON-vs-child-table decision for line items (see docs/data-layer.md)
+- [ ] Deferred hardening (not bugs): refresh-token reuse detection (revoke family),
+      transaction around create+issue token, expired-token cleanup job,
+      FluentValidation for request shapes, PATCH can't-clear-a-field
 
 ## Learned
-- ErrorOr implicit conversion doesn't work with interface type parameters (e.g. IReadOnlyList<T>); use concrete types (T[], List<T>)
-- UseExceptionHandler() requires AddProblemDetails() in .NET 10 when called with no arguments
+- ErrorOr implicit conversion doesn't work through interface type params (use concrete T[]/List<T>)
+- Minimal-hosting: config via factory ConfigureAppConfiguration doesn't reach startup-time
+  builder.Configuration reliably — use env vars in tests
+- Docker unavailable here → tests use in-memory SQLite (EnsureCreated) instead of Testcontainers
+- EF tooling: no design-time factory; use --startup-project src/InvoiceGen.Api (needs
+  EntityFrameworkCore.Design ref in Api)
 
 ## Context
-- Branch: feature/document-types
-- Checkpoint: 01c5c1e
+- Branch: feature/auth
+- Checkpoint: 564a785
