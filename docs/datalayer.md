@@ -40,7 +40,8 @@ The `password_hash`, `email`, and `id` columns are **provided by Identity**
 | `Email` / `NormalizedEmail` | Identity | unique index via `NormalizedEmail`; backs login and the 409-on-duplicate-register behavior |
 | `UserName` / `NormalizedUserName` | Identity | set equal to email at registration (no separate username concept) |
 | `PasswordHash` | Identity | PBKDF2 hash; never returned via the API — deliberately absent from the OpenAPI `User` schema |
-| `SecurityStamp`, `ConcurrencyStamp`, `TwoFactorEnabled`, `LockoutEnd`, … | Identity | standard Identity columns; unused now, groundwork for 2FA/lockout later |
+| `LockoutEnd`, `AccessFailedCount`, `LockoutEnabled` | Identity | **in use** — login enforces lockout (5 failed attempts → 5-minute lockout); new users get `LockoutEnabled = true` |
+| `SecurityStamp`, `ConcurrencyStamp`, `TwoFactorEnabled`, … | Identity | standard Identity columns; unused now, groundwork for 2FA/email later |
 | `business_name` | **added** | `text`, nullable |
 | `business_address` | **added** | `text`, nullable, multiline |
 | `logo_url` | **added** | `text`, nullable |
