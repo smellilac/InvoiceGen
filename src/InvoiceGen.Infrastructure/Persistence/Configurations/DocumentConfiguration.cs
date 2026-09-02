@@ -27,6 +27,8 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(x => x.ShippingAmount).HasPrecision(18, 2);
         builder.Property(x => x.AmountSettled).HasPrecision(18, 2);
         builder.Property(x => x.Subtotal).HasPrecision(18, 2);
+        builder.Property(x => x.DiscountAmount).HasPrecision(18, 2);
+        builder.Property(x => x.TaxAmount).HasPrecision(18, 2);
         builder.Property(x => x.Total).HasPrecision(18, 2);
         builder.Property(x => x.BalanceRemaining).HasPrecision(18, 2);
 
