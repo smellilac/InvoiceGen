@@ -10,6 +10,9 @@ public class Document
     public DocumentStatus Status { get; set; }
 
     public string? Number { get; set; }
+    // Free-text, never validated (same policy as Number) — e.g. a credit_note pointing
+    // at the invoice it credits. See openapi related_document_number.
+    public string? RelatedDocumentNumber { get; set; }
     public string From { get; set; } = null!;
     public string To { get; set; } = null!;
     public string Currency { get; set; } = "USD";
@@ -21,12 +24,14 @@ public class Document
     public decimal TaxPercent { get; set; }
     public decimal DiscountPercent { get; set; }
     public decimal ShippingAmount { get; set; }
-    public decimal AmountPaid { get; set; }
+    // Meaning depends on Type (x-settlement-policy): money received for money-owed types,
+    // money refunded for credit_note.
+    public decimal AmountSettled { get; set; }
 
     // Computed + stored so the saved document always shows the totals it was created with.
     public decimal Subtotal { get; private set; }
     public decimal Total { get; private set; }
-    public decimal BalanceDue { get; private set; }
+    public decimal BalanceRemaining { get; private set; }
 
     public string? Notes { get; set; }
     public string? Terms { get; set; }
@@ -60,7 +65,7 @@ public class Document
 
         Subtotal = Round(subtotal);
         Total = Round(discountedTotal + taxTotal + ShippingAmount);
-        BalanceDue = Round(Total - AmountPaid);
+        BalanceRemaining = Round(Total - AmountSettled);
     }
 
     private static decimal Round(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);

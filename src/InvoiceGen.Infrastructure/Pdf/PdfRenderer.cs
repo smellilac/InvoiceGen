@@ -18,6 +18,12 @@ public sealed class PdfRenderer : IPdfRenderer
         // or totals (it can travel to someone who isn't paying). Same layout otherwise.
         var isPackingSlip = document.Type == DocumentType.PackingSlip;
 
+        // x-settlement-policy: the shared settled/remaining fields mean "refunded" for a
+        // credit note, "paid/owed" for the money-owed-to-you types.
+        var isCreditNote = document.Type == DocumentType.CreditNote;
+        var settledLabel = isCreditNote ? "Refunded" : "Paid";
+        var remainingLabel = isCreditNote ? "Balance remaining" : "Balance due";
+
         return QuestPDF.Fluent.Document.Create(container =>
         {
             container.Page(page =>
@@ -33,6 +39,8 @@ public sealed class PdfRenderer : IPdfRenderer
                         col.Item().Text(TitleFor(document)).FontSize(20).Bold();
                         if (!string.IsNullOrWhiteSpace(document.Number))
                             col.Item().Text($"No. {document.Number}");
+                        if (!string.IsNullOrWhiteSpace(document.RelatedDocumentNumber))
+                            col.Item().Text($"Re: {document.RelatedDocumentNumber}");
                     });
                     row.ConstantItem(160).Column(col =>
                     {
@@ -74,8 +82,8 @@ public sealed class PdfRenderer : IPdfRenderer
                             if (document.TaxPercent > 0)
                                 totals.Item().Text($"Tax: {document.TaxPercent:N2}%");
                             totals.Item().Text($"Total: {Money(document.Currency, document.Total)}").Bold();
-                            totals.Item().Text($"Paid: {Money(document.Currency, document.AmountPaid)}");
-                            totals.Item().Text($"Balance due: {Money(document.Currency, document.BalanceDue)}").Bold();
+                            totals.Item().Text($"{settledLabel}: {Money(document.Currency, document.AmountSettled)}");
+                            totals.Item().Text($"{remainingLabel}: {Money(document.Currency, document.BalanceRemaining)}").Bold();
                         });
                     }
 

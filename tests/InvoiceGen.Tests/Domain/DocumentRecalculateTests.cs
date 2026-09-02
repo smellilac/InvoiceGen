@@ -31,7 +31,7 @@ public class DocumentRecalculateTests
 
         Assert.Equal(4520.00m, document.Subtotal);   // stays PRE-discount
         Assert.Equal(5195.74m, document.Total);       // 4294.00 discounted + 901.74 tax
-        Assert.Equal(5195.74m, document.BalanceDue);  // nothing paid
+        Assert.Equal(5195.74m, document.BalanceRemaining);  // nothing settled
     }
 
     [Fact]

@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace InvoiceGen.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260902071141_AddDocuments")]
+    [Migration("20260902140057_AddDocuments")]
     partial class AddDocuments
     {
         /// <inheritdoc />
@@ -114,11 +114,11 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<decimal>("AmountPaid")
+                    b.Property<decimal>("AmountSettled")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<decimal>("BalanceDue")
+                    b.Property<decimal>("BalanceRemaining")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
@@ -150,6 +150,10 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(2000)");
 
                     b.Property<string>("Number")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("RelatedDocumentNumber")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 

@@ -15,6 +15,7 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
 
         builder.Property(x => x.Number).HasMaxLength(40);
+        builder.Property(x => x.RelatedDocumentNumber).HasMaxLength(40);
         builder.Property(x => x.From).IsRequired().HasMaxLength(1000);
         builder.Property(x => x.To).IsRequired().HasMaxLength(1000);
         builder.Property(x => x.Currency).IsRequired().HasMaxLength(10);
@@ -24,10 +25,10 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(x => x.TaxPercent).HasPrecision(18, 2);
         builder.Property(x => x.DiscountPercent).HasPrecision(18, 2);
         builder.Property(x => x.ShippingAmount).HasPrecision(18, 2);
-        builder.Property(x => x.AmountPaid).HasPrecision(18, 2);
+        builder.Property(x => x.AmountSettled).HasPrecision(18, 2);
         builder.Property(x => x.Subtotal).HasPrecision(18, 2);
         builder.Property(x => x.Total).HasPrecision(18, 2);
-        builder.Property(x => x.BalanceDue).HasPrecision(18, 2);
+        builder.Property(x => x.BalanceRemaining).HasPrecision(18, 2);
 
         builder.HasOne<AppUser>()
             .WithMany()
