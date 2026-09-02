@@ -47,6 +47,7 @@ public sealed class CreateDocumentHandler(
         Type = request.Type,
         Status = DocumentStatus.Generated, // PDF is rendered on demand, so always available
         Number = request.Number,
+        RelatedDocumentNumber = request.RelatedDocumentNumber,
         From = from,
         To = request.To,
         Currency = string.IsNullOrWhiteSpace(request.Currency) ? "USD" : request.Currency,
@@ -55,7 +56,7 @@ public sealed class CreateDocumentHandler(
         TaxPercent = request.TaxPercent,
         DiscountPercent = request.DiscountPercent,
         ShippingAmount = request.ShippingAmount,
-        AmountPaid = request.AmountPaid,
+        AmountSettled = request.AmountSettled,
         Notes = request.Notes,
         Terms = request.Terms,
         CreatedAt = now,

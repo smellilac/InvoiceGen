@@ -17,6 +17,7 @@ public sealed record CreateDocumentRequest(
     DateOnly Date,
     DateOnly? DueDate,
     string? Number,
+    string? RelatedDocumentNumber,
     string? Currency,
     IReadOnlyList<CreateLineItemRequest> Items,
     decimal TaxPercent,
@@ -24,7 +25,7 @@ public sealed record CreateDocumentRequest(
     decimal ShippingAmount,
     string? Notes,
     string? Terms,
-    decimal AmountPaid);
+    decimal AmountSettled);
 
 // Matches the OpenAPI `Document` schema — note it intentionally does NOT echo the
 // line items or the tax/discount inputs; those are stored for the PDF only.
@@ -33,20 +34,21 @@ public sealed record DocumentDto(
     DocumentType Type,
     DocumentStatus Status,
     string? Number,
+    string? RelatedDocumentNumber,
     string From,
     string To,
     string Currency,
     decimal Subtotal,
     decimal Total,
-    decimal AmountPaid,
-    decimal BalanceDue,
+    decimal AmountSettled,
+    decimal BalanceRemaining,
     string PdfUrl,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
     public static DocumentDto FromEntity(Document d) => new(
-        d.Id, d.Type, d.Status, d.Number, d.From, d.To, d.Currency,
-        d.Subtotal, d.Total, d.AmountPaid, d.BalanceDue,
+        d.Id, d.Type, d.Status, d.Number, d.RelatedDocumentNumber, d.From, d.To, d.Currency,
+        d.Subtotal, d.Total, d.AmountSettled, d.BalanceRemaining,
         $"/documents/{d.Id}/pdf", d.CreatedAt, d.UpdatedAt);
 }
 

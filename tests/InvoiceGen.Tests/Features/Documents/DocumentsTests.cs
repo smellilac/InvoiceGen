@@ -54,7 +54,7 @@ public class DocumentsTests(TestWebAppFactory factory) : IClassFixture<TestWebAp
         var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
         Assert.Equal(100m, body.GetProperty("subtotal").GetDecimal());
         Assert.Equal(100m, body.GetProperty("total").GetDecimal());
-        Assert.Equal(100m, body.GetProperty("balance_due").GetDecimal());
+        Assert.Equal(100m, body.GetProperty("balance_remaining").GetDecimal());
         Assert.Equal("invoice", body.GetProperty("type").GetString());
         Assert.EndsWith("/pdf", body.GetProperty("pdf_url").GetString());
     }
