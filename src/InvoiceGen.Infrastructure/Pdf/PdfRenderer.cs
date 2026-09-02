@@ -111,7 +111,7 @@ public sealed class PdfRenderer : IPdfRenderer
             foreach (var item in document.Items)
             {
                 table.Cell().Text(item.Name);
-                table.Cell().AlignRight().Text($"{item.Quantity:N2}");
+                table.Cell().AlignRight().Text(MoneyFormatter.Quantity(item.Quantity));
                 table.Cell().AlignRight().Text(Money(document.Currency, item.UnitCost));
                 table.Cell().AlignRight().Text(Money(document.Currency, item.LineTotal));
             }
@@ -141,7 +141,7 @@ public sealed class PdfRenderer : IPdfRenderer
             {
                 table.Cell().Text(item.Name);
                 table.Cell().Text(item.Description ?? string.Empty);
-                table.Cell().AlignRight().Text($"{item.Quantity:N2}");
+                table.Cell().AlignRight().Text(MoneyFormatter.Quantity(item.Quantity));
             }
         });
     }
@@ -149,5 +149,5 @@ public sealed class PdfRenderer : IPdfRenderer
     private static string TitleFor(DomainDocument document) =>
         DocumentTypeApi.ToDisplayName(document.Type); // "Credit Note", not "CreditNote"
 
-    private static string Money(string currency, decimal amount) => $"{currency} {amount:N2}";
+    private static string Money(string currency, decimal amount) => MoneyFormatter.Format(currency, amount);
 }

@@ -12,6 +12,23 @@
   places, then sum. See `docs/decisions-log.md` for why. Don't round once on
   the subtotal — it will produce totals that don't match the per-line
   breakdown shown on the document.
+- Discount before tax: subtract `discount_percent` from the subtotal first,
+  then compute tax on the discounted amount — never tax the raw subtotal.
+  See `docs/decisions-log.md` for the worked example.
+
+## Rendering (PDF and any future surface)
+
+- Format monetary amounts using the number-formatting convention of the
+  document's own `currency` (thousands/decimal separator, symbol placement),
+  not a single fixed host locale. A USD document must render `$5,220.74`, not
+  `5 220,74`. Drive it off `currency` explicitly — this bug class is invisible
+  until a document is generated in a currency whose formatting differs from
+  the renderer's default locale.
+- A document type's human-readable label is `DocumentTypeInfo.name` — the
+  single source of truth. Reuse it anywhere a type is shown (main-page picker,
+  PDF titles, future email subjects). Never re-derive a label from the raw
+  `DocumentType` enum (`.ToString()` on `CreditNote` yields `CreditNote`, not
+  a display label).
 
 ## Document numbers
 

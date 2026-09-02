@@ -48,6 +48,13 @@ just the "what," not the "why."
   — see `docs/conventions.md`).
 - Tax is rounded per line item, then summed (not rounded once on the
   subtotal).
+- Discount is applied before tax — tax is computed on the post-discount
+  amount, not the raw subtotal (`x-rounding-policy.discount_tax_ordering`).
+- Rendered amounts are formatted per the document's own `currency`, not a
+  fixed host locale (`x-rendering-policy`).
+- A type's display label always comes from `DocumentTypeInfo.name`; it's never
+  re-derived from the raw `DocumentType` enum (picker, PDF title, and any
+  future surface all reuse it).
 - `number` is optional free text; the API never generates or validates it.
 - `GET /documents` is ordered `created_at` descending by default — the
   frontend's number-suggestion behavior depends on this.

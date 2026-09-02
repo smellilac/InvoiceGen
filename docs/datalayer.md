@@ -106,7 +106,7 @@ see `docs/decisions-log.md`. In EF Core, `Document` has an
 | `customer_id` | `uuid`, nullable | FK → `customers.id`; a **reference only**, kept even after the customer is soft-deleted. Does *not* keep `to` in sync — see the snapshot rule in `docs/decisions-log.md`. Index it (backs `GET /documents?customer_id=...`) |
 | `from` / `to` | `text` | billing org / customer (multiline free text). `to` is a **frozen snapshot** — auto-filled from the customer at creation if omitted, never rewritten afterward |
 | `currency` | `text` | e.g. USD |
-| `subtotal`, `total`, `amount_paid`, `balance_due` | `numeric` | decimal money — never float |
+| `subtotal`, `total`, `amount_paid`, `balance_due` | `numeric` | decimal money — never float. Totals computed discount-first, then per-line tax on the discounted amount (see `docs/decisions-log.md`) |
 | `tax_percent`, `discount_percent`, `shipping_amount` | `numeric` | inputs to the totals |
 | `notes` / `terms` | `text`, nullable | |
 | `created_at` / `updated_at` | `timestamptz` | list is ordered `created_at` DESC |
