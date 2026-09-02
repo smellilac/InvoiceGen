@@ -9,6 +9,7 @@ public enum DocumentType
     Estimate,
     ProformaInvoice,
     PurchaseOrder,
+    SalesOrder,
     Statement,
     Timesheet,
     WorkOrder,

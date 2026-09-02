@@ -21,6 +21,7 @@ public static class DocumentTypeApi
         DocumentType.Estimate => "Estimate",
         DocumentType.ProformaInvoice => "Proforma Invoice",
         DocumentType.PurchaseOrder => "Purchase Order",
+        DocumentType.SalesOrder => "Sales Order",
         DocumentType.Statement => "Statement",
         DocumentType.Timesheet => "Timesheet",
         DocumentType.WorkOrder => "Work Order",
