@@ -9,7 +9,7 @@ non-obvious design decision gets made; don't let this go stale.
 ## Money is `decimal`, never `double`/`float`
 
 **Decision:** Every monetary field (`unit_cost`, `subtotal`, `total`,
-`amount_paid`, `balance_due`, `shipping_amount`) is documented as the
+`amount_settled`, `balance_remaining`, `shipping_amount`) is documented as the
 `MonetaryAmount` schema and must map to C#'s `decimal` type everywhere —
 models, EF Core entities/columns, DTOs.
 
@@ -156,6 +156,49 @@ document of that type (`GET /documents?type=...&per_page=1`, which is
 ordered newest-first for exactly this reason) — and leave the field blank
 when the pattern doesn't match, rather than inserting a guess that might be
 wrong. A wrong auto-filled value is worse than an empty field.
+
+---
+
+## `related_document_number` is free text too, never an FK
+
+**Decision (0.6.0):** `related_document_number` on
+`CreateDocumentRequest`/`Document` is an optional free-text reference to
+another document — most commonly the invoice a `credit_note` credits (e.g.
+`INV-0042`). Same policy as `number`: stored exactly as submitted, never
+validated, never generated or altered.
+
+**Why:** It is deliberately **not** a foreign key or an ID link to a document
+in this system. The referenced invoice may have been issued outside this
+system entirely, or before this system existed, so linking by ID would be
+wrong more often than right. Meaningful mainly for `credit_note`; harmless but
+typically unused on other types.
+
+---
+
+## Settlement fields are one shared pair; meaning depends on `type`
+
+**Decision (0.6.0):** `amount_paid`/`balance_due` were renamed to
+**`amount_settled`/`balance_remaining`** (a plain pre-1.0 rename, not a
+migration), and their meaning is now explicitly type-dependent:
+
+- **Money-owed-TO-you types** (invoice, receipt, quote, estimate,
+  proforma_invoice, purchase_order, statement, timesheet, work_order,
+  packing_slip, sales_order): `amount_settled` = how much the customer has
+  **paid** toward `total`; `balance_remaining` = what they still owe.
+- **`credit_note`**: the money flows the other way — `total` is credit owed
+  **back** to the customer, `amount_settled` = how much has been **refunded**
+  so far, `balance_remaining` = credit not yet refunded.
+
+`balance_remaining` is always `total − amount_settled`.
+
+**Why one shared pair (not `amount_paid` + `amount_refunded` as two fields):**
+`CreateDocumentRequest`/`Document` stay one uniform shape across all 12 types —
+a renderer or client only needs `type` to know which direction `amount_settled`
+means, instead of branching on which field-name pair is present. The rename
+happened because "amount paid" has no sensible reading for a `credit_note`
+(money isn't paid to you, it's refunded by you). A real invoice-generator.com
+credit note has its own separate "Refunded" field, confirming this is a real,
+direction-dependent concept. See `x-settlement-policy` in `docs/openapi.yaml`.
 
 ---
 

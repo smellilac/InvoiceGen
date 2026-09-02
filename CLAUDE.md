@@ -108,6 +108,13 @@ each one.
   validates, or mutates it.** Any "suggest the next number" behavior is a
   frontend-only convenience using a conservative regex (safe only when the
   previous number ends in digits) — never guess when it doesn't match.
+  `related_document_number` (the invoice a `credit_note` credits) follows the
+  identical rule — free text, never an FK/ID link to a document in this system.
+- **Settlement is one shared field pair: `amount_settled`/`balance_remaining`**
+  (never the old `amount_paid`/`balance_due`, never split into paid/refunded).
+  Meaning depends on `type` — paid/owed for money-owed-to-you types,
+  refunded/not-yet-refunded for `credit_note`; `balance_remaining` is always
+  `total − amount_settled`. See `docs/decisions-log.md`.
 - **A document's `to` (customer name/address) is a frozen snapshot taken at
   creation time, not a live link to the Customer record.** `customer_id` is
   kept only for filtering/lookup; editing a customer later never rewrites the

@@ -38,6 +38,19 @@
   conservative trailing-digits regex described in `docs/decisions-log.md`,
   and fail silently (leave the field blank) rather than guessing when the
   previous number doesn't match a clean pattern.
+- `related_document_number` (e.g. the invoice a `credit_note` credits) follows
+  the exact same rule: free text, never validated, never an FK/ID link to a
+  document in this system.
+
+## Settlement (`amount_settled` / `balance_remaining`)
+
+- These are one shared pair reused across all 12 document types; their meaning
+  depends on `type`. For money-owed-to-you types they mean paid / still owed;
+  for `credit_note` they mean refunded / not-yet-refunded. `balance_remaining`
+  is always `total − amount_settled`. See `docs/decisions-log.md`.
+- Don't reintroduce the old `amount_paid` / `balance_due` names, and don't
+  split into separate paid/refunded fields — the single pair keeps the
+  request/response shape uniform across every type.
 
 ## API error shape
 
