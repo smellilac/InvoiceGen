@@ -1,6 +1,13 @@
-# Handoff — feature/saled-order-generation-implementation
+# Handoff — fix/openapi-deps-severity
 
 ## Completed
+- [x] **Security: Microsoft.OpenApi NU1903 cleared.** Added direct ref in InvoiceGen.Api
+      pinned `2.*` -> resolved 2.12.2 (patched; stays major-2 for API compat with
+      AspNetCore.OpenApi 10, avoids the risky 3.x jump). Overrides the vulnerable transitive
+      2.0.0; test project inherits it. Build green, no NU1903. NOTE: verify /openapi still
+      generates in a real (non-Testing) env — MapOpenApi is dev-gated so the suite won't catch it.
+- [x] **Integration suite RUN & green** (other session): 31/31 on master (7247f52) under
+      Testcontainers + real Postgres. No fixes needed.
 - [x] **Spec 0.6.0 code alignment:** renamed amount_paid->amount_settled,
       balance_due->balance_remaining (entity/DTOs/handler/EF/Recalculate); added
       related_document_number (free-text, like number). PDF: type-aware settlement labels
@@ -32,8 +39,6 @@
       can't recompute). Add computed `discount_amount` + `tax_amount` (stored, rounded) to the
       Document schema + entity. Consider storing them in Recalculate() while it already computes them.
 - [ ] Customers feature (0.3.0 docs) — not yet implemented in code (soft-delete, frozen `to`).
-- [ ] Follow-up still open: expose discount_amount/tax_amount in Document response (per-line
-      tax + no line items in response = client can't recompute; return computed amounts).
 - [ ] Deferred hardening: refresh-token reuse detection, expired-token cleanup, ExecuteDelete
       for delete, PDF text-extraction test to assert packing slip hides pricing.
 
@@ -44,5 +49,6 @@
 - Testcontainers 4.14 ctor + xUnit v2 IAsyncLifetime disposal gotchas (see 45a6ea8).
 
 ## Context
-- Branch: feature/saled-order-generation-implementation
-- Checkpoint: f180bce  (prev: 064e758 sales_order, 348801e recalc fix, 45a6ea8 documents feature)
+- Branch: fix/openapi-deps-severity (off master 27c3de3 — the green integration baseline)
+- master history: 27c3de3 baseline -> 7247f52 (0.6.0 #8) -> f180bce -> ...
+- Future features should branch off master; old topic branches are stale/merged.

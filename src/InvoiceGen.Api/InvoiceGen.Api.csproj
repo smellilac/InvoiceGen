@@ -16,6 +16,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- Direct ref overrides the vulnerable 2.0.0 pulled transitively by
+         Microsoft.AspNetCore.OpenApi (NU1903 / GHSA-v5pm-xwqc-g5wc). Stays on major 2.x
+         for API compatibility with AspNetCore.OpenApi 10. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.*" />
   </ItemGroup>
 
   <ItemGroup>
