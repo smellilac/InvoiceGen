@@ -6,8 +6,10 @@ public sealed class CreateDocumentRequestValidator : AbstractValidator<CreateDoc
 {
     public CreateDocumentRequestValidator()
     {
+        // `to` may be omitted when a customer is referenced (snapshotted in the handler).
         RuleFor(x => x.To).NotEmpty()
-            .WithMessage("The 'to' field is required.");
+            .When(x => x.CustomerId is null)
+            .WithMessage("The 'to' field is required unless a customer is referenced.");
 
         RuleFor(x => x.Date).NotEqual(default(DateOnly))
             .WithMessage("A document date is required.");

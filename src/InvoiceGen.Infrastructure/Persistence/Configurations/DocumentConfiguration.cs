@@ -42,5 +42,10 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
 
         // GET /documents filters by user_id (+ optional type) and orders by created_at desc.
         builder.HasIndex(x => new { x.UserId, x.CreatedAt });
+        // Backs GET /documents?customer_id=... — composite so one index covers the filter
+        // (user_id + customer_id) AND the created_at sort in a single seek. No FK navigation
+        // on purpose (avoids the soft-delete query-filter interaction; ownership/existence
+        // is validated in the handler).
+        builder.HasIndex(x => new { x.UserId, x.CustomerId, x.CreatedAt });
     }
 }

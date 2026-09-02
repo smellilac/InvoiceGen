@@ -10,6 +10,7 @@ public interface IAppDbContext
 {
     DbSet<Document> Documents { get; }
     DbSet<LineItem> LineItems { get; }
+    DbSet<Customer> Customers { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

@@ -1,28 +1,28 @@
 using System.Security.Claims;
 using InvoiceGen.Api.Common;
-using InvoiceGen.Application.Features.Documents;
+using InvoiceGen.Application.Features.Customers;
 
-namespace InvoiceGen.Api.Features.Documents;
+namespace InvoiceGen.Api.Features.Customers;
 
-public static class DocumentEndpoints
+public static class CustomerEndpoints
 {
     public static void Map(IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/documents").WithTags("documents").RequireAuthorization();
+        var group = app.MapGroup("/customers").WithTags("customers").RequireAuthorization();
 
         MapCreate(group);
         MapList(group);
         MapGet(group);
+        MapUpdate(group);
         MapDelete(group);
-        MapGetPdf(group);
     }
 
     private static void MapCreate(RouteGroupBuilder group)
     {
         group.MapPost("/", async (
-            CreateDocumentRequest request,
+            CreateCustomerRequest request,
             ClaimsPrincipal principal,
-            CreateDocumentHandler handler,
+            CreateCustomerHandler handler,
             IProblemDetailsService pds,
             HttpContext http,
             CancellationToken ct) =>
@@ -33,22 +33,18 @@ public static class DocumentEndpoints
             var result = await handler.HandleAsync(userId.Value, request, ct);
             return result.IsError
                 ? await result.ToProblemDetails(pds, http)
-                : Results.Created($"/documents/{result.Value.Id}", result.Value);
+                : Results.Created($"/customers/{result.Value.Id}", result.Value);
         })
-        .AddEndpointFilter<ValidationFilter<CreateDocumentRequest>>()
-        .WithName("CreateDocument")
-        .WithSummary("Create a document from the submitted form");
+        .AddEndpointFilter<ValidationFilter<CreateCustomerRequest>>()
+        .WithName("CreateCustomer")
+        .WithSummary("Create a saved customer");
     }
 
     private static void MapList(RouteGroupBuilder group)
     {
         group.MapGet("/", async (
-            string? type,
-            Guid? customer_id,
-            int? page,
-            int? per_page,
             ClaimsPrincipal principal,
-            ListDocumentsHandler handler,
+            ListCustomersHandler handler,
             IProblemDetailsService pds,
             HttpContext http,
             CancellationToken ct) =>
@@ -56,30 +52,21 @@ public static class DocumentEndpoints
             var userId = principal.GetUserId();
             if (userId is null) return Results.Unauthorized();
 
-            Domain.Enums.DocumentType? typeFilter = null;
-            if (!string.IsNullOrWhiteSpace(type))
-            {
-                if (!DocumentTypeApi.TryParse(type, out var parsed))
-                    return Results.Problem(statusCode: 422, title: "invalid_type",
-                        detail: $"Unknown document type '{type}'.");
-                typeFilter = parsed;
-            }
-
-            var result = await handler.HandleAsync(userId.Value, typeFilter, customer_id, page ?? 1, per_page ?? 20, ct);
+            var result = await handler.HandleAsync(userId.Value, ct);
             return result.IsError
                 ? await result.ToProblemDetails(pds, http)
                 : Results.Ok(result.Value);
         })
-        .WithName("ListDocuments")
-        .WithSummary("List the current user's documents (newest first, paginated)");
+        .WithName("ListCustomers")
+        .WithSummary("List the current user's active customers (ordered by name)");
     }
 
     private static void MapGet(RouteGroupBuilder group)
     {
-        group.MapGet("/{documentId:guid}", async (
-            Guid documentId,
+        group.MapGet("/{customerId:guid}", async (
+            Guid customerId,
             ClaimsPrincipal principal,
-            GetDocumentHandler handler,
+            GetCustomerHandler handler,
             IProblemDetailsService pds,
             HttpContext http,
             CancellationToken ct) =>
@@ -87,21 +74,45 @@ public static class DocumentEndpoints
             var userId = principal.GetUserId();
             if (userId is null) return Results.Unauthorized();
 
-            var result = await handler.HandleAsync(userId.Value, documentId, ct);
+            var result = await handler.HandleAsync(userId.Value, customerId, ct);
             return result.IsError
                 ? await result.ToProblemDetails(pds, http)
                 : Results.Ok(result.Value);
         })
-        .WithName("GetDocument")
-        .WithSummary("Get one document by id");
+        .WithName("GetCustomer")
+        .WithSummary("Get one customer by id");
+    }
+
+    private static void MapUpdate(RouteGroupBuilder group)
+    {
+        group.MapPatch("/{customerId:guid}", async (
+            Guid customerId,
+            UpdateCustomerRequest request,
+            ClaimsPrincipal principal,
+            UpdateCustomerHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, customerId, request, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.Ok(result.Value);
+        })
+        .AddEndpointFilter<ValidationFilter<UpdateCustomerRequest>>()
+        .WithName("UpdateCustomer")
+        .WithSummary("Update a customer");
     }
 
     private static void MapDelete(RouteGroupBuilder group)
     {
-        group.MapDelete("/{documentId:guid}", async (
-            Guid documentId,
+        group.MapDelete("/{customerId:guid}", async (
+            Guid customerId,
             ClaimsPrincipal principal,
-            DeleteDocumentHandler handler,
+            DeleteCustomerHandler handler,
             IProblemDetailsService pds,
             HttpContext http,
             CancellationToken ct) =>
@@ -109,34 +120,12 @@ public static class DocumentEndpoints
             var userId = principal.GetUserId();
             if (userId is null) return Results.Unauthorized();
 
-            var result = await handler.HandleAsync(userId.Value, documentId, ct);
+            var result = await handler.HandleAsync(userId.Value, customerId, ct);
             return result.IsError
                 ? await result.ToProblemDetails(pds, http)
                 : Results.NoContent();
         })
-        .WithName("DeleteDocument")
-        .WithSummary("Delete a document from history");
-    }
-
-    private static void MapGetPdf(RouteGroupBuilder group)
-    {
-        group.MapGet("/{documentId:guid}/pdf", async (
-            Guid documentId,
-            ClaimsPrincipal principal,
-            GetDocumentPdfHandler handler,
-            IProblemDetailsService pds,
-            HttpContext http,
-            CancellationToken ct) =>
-        {
-            var userId = principal.GetUserId();
-            if (userId is null) return Results.Unauthorized();
-
-            var result = await handler.HandleAsync(userId.Value, documentId, ct);
-            return result.IsError
-                ? await result.ToProblemDetails(pds, http)
-                : Results.File(result.Value.Content, "application/pdf", result.Value.FileName);
-        })
-        .WithName("DownloadDocumentPdf")
-        .WithSummary("Download the document as a PDF (rendered on demand)");
+        .WithName("DeleteCustomer")
+        .WithSummary("Soft-delete a customer");
     }
 }

@@ -13,7 +13,8 @@ public sealed record CreateLineItemRequest(
 public sealed record CreateDocumentRequest(
     DocumentType Type,
     string? From,
-    string To,
+    Guid? CustomerId,
+    string? To,
     DateOnly Date,
     DateOnly? DueDate,
     string? Number,
