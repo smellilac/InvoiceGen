@@ -1,6 +1,9 @@
+using InvoiceGen.Application.Common;
 using InvoiceGen.Application.Features.Auth;
+using InvoiceGen.Application.Features.Documents;
 using InvoiceGen.Domain.Entities;
 using InvoiceGen.Infrastructure.Auth;
+using InvoiceGen.Infrastructure.Pdf;
 using InvoiceGen.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -12,12 +15,14 @@ namespace InvoiceGen.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInvoiceGenInfrastructure(
+    public static IServiceCollection AddInvoiceGenInfrastructureLayer(
         this IServiceCollection services,
         IConfiguration configuration)
     {
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("Default")));
+
+        services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
         services.AddIdentityCore<AppUser>(options =>
             {
@@ -35,6 +40,7 @@ public static class DependencyInjection
 
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+        services.AddSingleton<IPdfRenderer, PdfRenderer>();
 
         return services;
     }

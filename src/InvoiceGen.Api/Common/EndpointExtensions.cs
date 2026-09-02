@@ -1,4 +1,5 @@
 using InvoiceGen.Api.Features.Auth;
+using InvoiceGen.Api.Features.Documents;
 using InvoiceGen.Api.Features.DocumentTypes;
 
 namespace InvoiceGen.Api.Common;
@@ -9,6 +10,7 @@ public static class EndpointExtensions
     {
         DocumentTypeEndpoints.Map(app);
         AuthEndpoints.Map(app);
+        DocumentEndpoints.Map(app);
 
         return app;
     }

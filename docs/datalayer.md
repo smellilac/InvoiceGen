@@ -1,8 +1,8 @@
 # Data Layer
 
-**Status: Auth tables decided; Documents tables still open.** This file
-tracks real schema decisions as they're made — update it the same day a
-decision lands, don't let it drift from what's actually implemented.
+**Status: Auth + Documents + Customers schema decided.** This file tracks real schema
+decisions as they're made — update it the same day a decision lands, don't
+let it drift from what's actually implemented.
 
 ## Decided
 
@@ -66,14 +66,65 @@ kept separate.
 Index `user_id` too — not required for Phase 1, but cheap to add now and
 needed the moment a "log out everywhere" feature exists.
 
+### `customers`
+
+Added in 0.3.0. Saved customer records a document can reference by
+`customer_id` instead of retyping `to`. **Soft-deleted, never hard-deleted**
+(see `docs/decisions-log.md`): a `deleted_at` timestamp hides the row from
+`GET /customers` and blocks new references, but keeps historical documents'
+`customer_id` valid.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `user_id` | `uuid` | FK → `AspNetUsers.Id`; every query filters on this (ownership) |
+| `name` | `text` | required |
+| `email` | `text`, nullable | |
+| `address` | `text`, nullable | multiline |
+| `phone` | `text`, nullable | |
+| `notes` | `text`, nullable | private, never shown on documents |
+| `created_at` / `updated_at` | `timestamptz` | `GET /customers` is ordered by `name` ASC |
+| `deleted_at` | `timestamptz`, nullable | soft-delete flag; non-null → excluded from listing and unusable for new documents |
+
+Filtered index / query filter on `deleted_at IS NULL` for the common
+"list active customers" path.
+
+### `documents`
+
+Line items live in a **child table** (`line_items`), not a JSON column —
+see `docs/decisions-log.md`. In EF Core, `Document` has an
+`ICollection<LineItem>` navigation. Monetary totals are stored as computed
+`numeric` values (see the money/tax rules in `docs/conventions.md`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `user_id` | `uuid` | FK → `AspNetUsers.Id`; every query filters on this (ownership) |
+| `type` | `text`/enum | invoice, receipt, quote, … |
+| `status` | `text` | `draft`/`generated`; largely nominal (PDF is on-demand) |
+| `number` | `text`, nullable | free text, never generated/validated server-side |
+| `customer_id` | `uuid`, nullable | FK → `customers.id`; a **reference only**, kept even after the customer is soft-deleted. Does *not* keep `to` in sync — see the snapshot rule in `docs/decisions-log.md`. Index it (backs `GET /documents?customer_id=...`) |
+| `from` / `to` | `text` | billing org / customer (multiline free text). `to` is a **frozen snapshot** — auto-filled from the customer at creation if omitted, never rewritten afterward |
+| `currency` | `text` | e.g. USD |
+| `subtotal`, `total`, `amount_paid`, `balance_due` | `numeric` | decimal money — never float |
+| `tax_percent`, `discount_percent`, `shipping_amount` | `numeric` | inputs to the totals |
+| `notes` / `terms` | `text`, nullable | |
+| `created_at` / `updated_at` | `timestamptz` | list is ordered `created_at` DESC |
+
+### `line_items`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `document_id` | `uuid` | FK → `documents.id`, cascade delete |
+| `name` | `text` | required |
+| `description` | `text`, nullable | |
+| `quantity` | `numeric` | |
+| `unit_cost` | `numeric` | decimal money |
+| `reference` | `text`, nullable | |
+
 ## Not yet decided
 
-- Whether `Document.items` (line items) is a child table or a JSON column —
-  a child table is more consistent with treating each line item as
-  addressable data (e.g. if per-line rounding details ever need to be
-  queried/audited); a JSON column is simpler if line items are always
-  read/written as a whole with the parent document. Revisit once querying
-  needs are clearer. Doesn't block Auth work.
 - Indexing strategy for `GET /documents` (needs to support: filter by
   `user_id` + `type`, sort by `created_at` descending, paginate). Also
   doesn't block Auth work.

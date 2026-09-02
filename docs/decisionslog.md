@@ -173,3 +173,102 @@ not a permission-matrix concern. A non-owner gets **404**, not 403 — matching
 the API contract, which hides whether the resource exists at all. Roles and
 policies would be ceremony for a system with a single rule and no privilege
 levels; add them only if an admin/multi-tier concept ever appears.
+
+---
+
+## Line items are a child table, not a JSON column
+
+**Decision:** `Document.items` is persisted as a separate `line_items` table
+with a foreign key to `documents`. In EF Core, `Document` has a normal
+`ICollection<LineItem>` navigation property.
+
+**Why:** It's the idiomatic EF Core relational pattern and actually *less*
+setup than a JSON column — EF Core's JSON mapping needs extra configuration,
+which you'd only take on if you had a concrete reason to want it. We don't:
+there's no evidence yet that line items need to be queried independently of
+their parent document. A child table also keeps each line individually
+addressable if per-line rounding ever needs auditing. Revisit only if line
+items turn out to always be read/written as one opaque blob *and* the JSON
+form measurably simplifies something.
+
+---
+
+## Documents snapshot customer info; customers are soft-deleted
+
+**Decision (0.3.0):** The Customers resource landed (previously deferred). Two
+rules govern how it interacts with documents:
+
+- A `Document`'s `to` (customer name/address) is a **frozen snapshot** taken
+  at creation time — **not** a live view of the `Customer` record.
+  `customer_id` is stored only as a reference for filtering/lookup (e.g. "list
+  all invoices for this customer"). If `customer_id` is given and `to` is
+  omitted on `POST /documents`, `to` is auto-filled from the customer's
+  current info *then*; an explicit `to` always wins. Editing the customer
+  later never rewrites the `to` on documents already created.
+- Deleting a customer is a **soft delete** (a `deleted_at` timestamp, not a
+  row removal). A soft-deleted customer disappears from `GET /customers` and
+  can no longer be referenced by new documents (`POST /documents` with its
+  `customer_id` → **422**), but existing documents keep their frozen `to` and
+  their `customer_id`, so historical records and
+  `GET /documents?customer_id=...` filtering still work.
+
+**Why (snapshot):** An invoice is a legal/financial record of what was billed
+at a point in time. If a customer moves and updates their saved address, past
+invoices must still show the address that was correct when issued — not
+silently rewrite history. This is the same reasoning as "line items are stored
+on the document, not recomputed from a live product catalog" (see above), and
+matches how real invoicing/accounting software behaves.
+
+**Why (soft delete):** A hard delete would either orphan
+`Document.customer_id` or force cascading deletes that destroy financial
+history — both worse than the small complexity cost of a `deleted_at` flag.
+
+**Why Payments stayed deferred but Customers didn't:** Customers is a concrete,
+low-risk convenience with a clear shape. Payments was scoped *down* to "not
+needed yet" rather than designed — there's no near-term need to collect money,
+and doing it right (processor integration, PCI, webhook signatures,
+idempotency, refunds) is a large, speculative effort until a real use case
+exists. See `x-customer-policy` and `x-future-phases` in `docs/openapi.yaml`.
+
+---
+
+## PDF library is QuestPDF
+
+**Decision:** PDFs are generated with **QuestPDF** (built in C# code, not an
+HTML-to-PDF converter).
+
+**Why:** It's free under its Community License at this project's scale,
+modern, and code-first (the document layout is plain C#, easy to version and
+test). No decision on external templates/engines needed.
+
+---
+
+## PDFs are rendered on demand, never stored
+
+**Decision:** The PDF is generated fresh each time `GET /documents/{id}/pdf`
+is called. Nothing is persisted to disk or blob storage. `pdf_url` on the
+`Document` response simply points at that endpoint.
+
+**Why:** It removes the entire "where do we store files / how is `pdf_url`
+served" question — there is no file to store. The source data lives in the
+DB; the PDF is a pure projection of it, so regenerating is always correct and
+never stale. Cost is a little CPU per download, which is negligible at this
+scale. If rendering ever gets expensive, add caching then — don't pre-store
+now.
+
+**Consequence:** the `Document.status` enum (`draft`/`generated`) loses most
+of its meaning, since a PDF is always available on demand. Treat documents as
+effectively always renderable (set `status = generated`); the distinction is
+kept in the contract only for a possible future where rendering is deferred.
+
+---
+
+## PDF generation is synchronous
+
+**Decision:** The PDF is produced inline during the `GET .../pdf` request —
+no background job or queue.
+
+**Why:** Simple billing documents render fast; there's nothing to gain from
+async infrastructure yet. Offload to a background job only if/when rendering
+becomes slow enough to hurt request latency (e.g. very complex templates) —
+noted as a future revisit, not a Phase 1 need.

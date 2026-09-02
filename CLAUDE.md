@@ -21,6 +21,8 @@ implementation choices land; don't let them go stale once code exists.
   and `docs/decisions-log.md`
 - Database: **PostgreSQL** via EF Core
 - ORM: EF Core
+- PDF: **QuestPDF** — rendered **on demand**, never stored (`pdf_url` points at
+  the download endpoint); synchronous. See `docs/decisions-log.md`.
 - Frontend: **not yet decided**
 
 ## Solution structure
@@ -33,6 +35,7 @@ src/
   InvoiceGen.Application/         — Use cases organized as vertical slices
     Features/
       Auth/                       — Login, Register, Refresh, Logout
+      Customers/                  — Create, List, Get, Update, Delete (soft)
       Documents/                  — Create, List, Get, GetPdf
       DocumentTypes/              — List
     Common/                       — Shared abstractions, base types
@@ -42,6 +45,7 @@ src/
   InvoiceGen.Api/                 — Minimal API endpoints organized as vertical slices
     Features/
       Auth/
+      Customers/
       Documents/
       DocumentTypes/
 tests/
@@ -93,6 +97,12 @@ each one.
   validates, or mutates it.** Any "suggest the next number" behavior is a
   frontend-only convenience using a conservative regex (safe only when the
   previous number ends in digits) — never guess when it doesn't match.
+- **A document's `to` (customer name/address) is a frozen snapshot taken at
+  creation time, not a live link to the Customer record.** `customer_id` is
+  kept only for filtering/lookup; editing a customer later never rewrites the
+  `to` text on documents already created. Deleting a customer is a **soft
+  delete** (`deleted_at`), never a row removal — historical documents keep
+  their `to` text and `customer_id`. See `docs/decisions-log.md`.
 
 ## Where to look
 
@@ -108,8 +118,9 @@ each one.
 | `docs/development.md` | How to run/build/test locally — placeholder until the project is scaffolded |
 
 Deferred to a later phase (not yet documented in detail — see
-`x-future-phases` in `docs/openapi.yaml`): Customers as a standalone
-resource, payments/webhooks, email delivery, UBL/e-invoice export.
+`x-future-phases` in `docs/openapi.yaml`): payments/webhooks (explicitly
+scoped down to "not needed yet" as of 0.3.0, not designed), email delivery,
+UBL/e-invoice export. (Customers is no longer deferred — it landed in 0.3.0.)
 `infrastructure.md`, `observability.md`, and `service-boundaries.md` aren't
 created yet either — add them when there's actually infrastructure or more
 than one service to document.

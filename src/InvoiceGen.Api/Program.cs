@@ -1,49 +1,48 @@
-using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using InvoiceGen.Api.Common;
 using InvoiceGen.Application.Common;
 using InvoiceGen.Infrastructure;
-using InvoiceGen.Infrastructure.Auth;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
-// Match the OpenAPI contract's snake_case field names (access_token, business_name, ...).
+// Match the OpenAPI contract's snake_case field names (access_token, business_name, ...)
+// and snake_case string enums (type: "credit_note", status: "generated").
 builder.Services.ConfigureHttpJsonOptions(o =>
-    o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower);
+{
+    o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower));
+});
+
+// Per-IP throttle for the auth endpoints (login/register/refresh brute-force protection).
+// Complements per-account lockout, which doesn't stop spraying one password across many accounts.
+// Disabled under "Testing" so the suite's many same-IP auth calls aren't throttled.
+var rateLimitingEnabled = !builder.Environment.IsEnvironment("Testing");
+if (rateLimitingEnabled)
+{
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.AddPolicy("auth", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    Window = TimeSpan.FromMinutes(1),
+                    PermitLimit = 20,
+                    QueueLimit = 0
+                }));
+    });
+}
 
 builder.Services.AddInvoiceGenApplicationLayer();
-builder.Services.AddInvoiceGenInfrastructure(builder.Configuration);
-
-var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
-    ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");
-
-// Fail fast with a clear message instead of a cryptic error on the first auth request.
-if (Encoding.UTF8.GetByteCount(jwt.Key) < 32)
-    throw new InvalidOperationException(
-        "Jwt:Key must be at least 32 bytes (256 bits) for HMAC-SHA256. " +
-        "Set it via user-secrets in development or environment variables in production.");
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwt.Issuer,
-            ValidAudience = jwt.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
-            ClockSkew = TimeSpan.Zero
-        };
-    });
-builder.Services.AddAuthorization();
+builder.Services.AddInvoiceGenInfrastructureLayer(builder.Configuration);
+builder.Services.AddJwtBearerAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
@@ -54,6 +53,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseExceptionHandler();
 app.UseHttpsRedirection();
+if (rateLimitingEnabled)
+    app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapEndpoints();
