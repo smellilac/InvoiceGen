@@ -108,22 +108,31 @@ see `docs/decisions-log.md`. In EF Core, `Document` has an
 | `customer_id` | `uuid`, nullable | FK → `customers.id`; a **reference only**, kept even after the customer is soft-deleted. Does *not* keep `to` in sync — see the snapshot rule in `docs/decisions-log.md`. Index it (backs `GET /documents?customer_id=...`) |
 | `from` / `to` | `text` | billing org / customer (multiline free text). `to` is a **frozen snapshot** — auto-filled from the customer at creation if omitted, never rewritten afterward |
 | `currency` | `text` | e.g. USD |
-| `subtotal`, `total`, `amount_settled`, `balance_remaining` | `numeric` | decimal money — never float. Totals computed discount-first, then per-line tax on the discounted amount (see `docs/decisions-log.md`). `amount_settled`/`balance_remaining` mean paid/owed for most types, refunded/unrefunded for `credit_note` — see `docs/decisions-log.md` settlement policy |
-| `tax_percent`, `discount_percent`, `shipping_amount` | `numeric` | inputs to the totals |
+| `subtotal`, `discount_amount`, `tax_amount`, `total`, `amount_settled`, `balance_remaining` | `numeric(18,2)` | decimal money — never float. All computed + stored by `Document.Recalculate()`. `subtotal` is PRE-discount; `discount_amount` = subtotal − discounted; `tax_amount` = sum of per-line tax; totals computed discount-first, then per-line tax on the discounted amount (see `docs/decisions-log.md`). `discount_amount`/`tax_amount` are stored so a client can reconcile the response without the line items (which the response omits). `amount_settled`/`balance_remaining` mean paid/owed for most types, refunded/unrefunded for `credit_note` — see settlement policy |
+| `tax_percent`, `discount_percent`, `shipping_amount` | `numeric(18,2)` | inputs to the totals |
 | `notes` / `terms` | `text`, nullable | |
 | `created_at` / `updated_at` | `timestamptz` | list is ordered `created_at` DESC |
 
 ### `line_items`
 
+A child table (one-to-many from `documents`), configured via
+`LineItemConfiguration` + `DocumentConfiguration.HasMany(x => x.Items)`.
+`line_total` (`quantity × unit_cost`) is **computed in code and NOT stored** —
+it's a C# expression on the entity, mapped out with `Ignore(...)`. Totals are
+derived from these rows by `Document.Recalculate()`.
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` | PK |
-| `document_id` | `uuid` | FK → `documents.id`, cascade delete |
-| `name` | `text` | required |
-| `description` | `text`, nullable | |
-| `quantity` | `numeric` | |
-| `unit_cost` | `numeric` | decimal money |
-| `reference` | `text`, nullable | |
+| `document_id` | `uuid` | FK → `documents.id`, **cascade delete** (delete a document → its line items go) |
+| `name` | `varchar(500)` | required |
+| `description` | `varchar(2000)`, nullable | |
+| `quantity` | `numeric(18,4)` | supports fractional units (e.g. hours) |
+| `unit_cost` | `numeric(18,2)` | decimal money — never float |
+| `reference` | `varchar(200)`, nullable | |
+
+Not exposed in the `Document` API response (matches the OpenAPI schema); the
+PDF renderer loads them explicitly with `Include(d => d.Items)`.
 
 ## Not yet decided
 
