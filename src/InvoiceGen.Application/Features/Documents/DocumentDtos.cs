@@ -40,6 +40,8 @@ public sealed record DocumentDto(
     string To,
     string Currency,
     decimal Subtotal,
+    decimal DiscountAmount,
+    decimal TaxAmount,
     decimal Total,
     decimal AmountSettled,
     decimal BalanceRemaining,
@@ -49,7 +51,7 @@ public sealed record DocumentDto(
 {
     public static DocumentDto FromEntity(Document d) => new(
         d.Id, d.Type, d.Status, d.Number, d.RelatedDocumentNumber, d.From, d.To, d.Currency,
-        d.Subtotal, d.Total, d.AmountSettled, d.BalanceRemaining,
+        d.Subtotal, d.DiscountAmount, d.TaxAmount, d.Total, d.AmountSettled, d.BalanceRemaining,
         $"/documents/{d.Id}/pdf", d.CreatedAt, d.UpdatedAt);
 }
 

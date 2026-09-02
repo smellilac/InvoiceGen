@@ -17,6 +17,24 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                 type: "uuid",
                 nullable: true);
 
+            migrationBuilder.AddColumn<decimal>(
+                name: "DiscountAmount",
+                table: "documents",
+                type: "numeric(18,2)",
+                precision: 18,
+                scale: 2,
+                nullable: false,
+                defaultValue: 0m);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "TaxAmount",
+                table: "documents",
+                type: "numeric(18,2)",
+                precision: 18,
+                scale: 2,
+                nullable: false,
+                defaultValue: 0m);
+
             migrationBuilder.CreateTable(
                 name: "customers",
                 columns: table => new
@@ -66,6 +84,14 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropColumn(
                 name: "CustomerId",
+                table: "documents");
+
+            migrationBuilder.DropColumn(
+                name: "DiscountAmount",
+                table: "documents");
+
+            migrationBuilder.DropColumn(
+                name: "TaxAmount",
                 table: "documents");
         }
     }

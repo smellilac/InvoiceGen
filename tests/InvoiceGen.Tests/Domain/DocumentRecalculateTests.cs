@@ -29,8 +29,10 @@ public class DocumentRecalculateTests
         // Subtotal (pre-discount) 4520.00, discount 226.00, tax 901.74, total 5195.74.
         var document = Recalculated(5m, 21m, (1m, 3200m), (1m, 1320m));
 
-        Assert.Equal(4520.00m, document.Subtotal);   // stays PRE-discount
-        Assert.Equal(5195.74m, document.Total);       // 4294.00 discounted + 901.74 tax
+        Assert.Equal(4520.00m, document.Subtotal);          // stays PRE-discount
+        Assert.Equal(226.00m, document.DiscountAmount);     // 4520.00 - 4294.00
+        Assert.Equal(901.74m, document.TaxAmount);          // 638.40 + 263.34
+        Assert.Equal(5195.74m, document.Total);             // 4294.00 discounted + 901.74 tax
         Assert.Equal(5195.74m, document.BalanceRemaining);  // nothing settled
     }
 

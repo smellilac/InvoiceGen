@@ -32,7 +32,9 @@ public class Document
     public decimal AmountSettled { get; set; }
 
     // Computed + stored so the saved document always shows the totals it was created with.
-    public decimal Subtotal { get; private set; }
+    public decimal Subtotal { get; private set; }        // pre-discount
+    public decimal DiscountAmount { get; private set; }  // total discount (subtotal - discounted)
+    public decimal TaxAmount { get; private set; }       // total tax (sum of per-line tax)
     public decimal Total { get; private set; }
     public decimal BalanceRemaining { get; private set; }
 
@@ -67,6 +69,8 @@ public class Document
         }
 
         Subtotal = Round(subtotal);
+        DiscountAmount = Round(Subtotal - discountedTotal); // total discount applied
+        TaxAmount = Round(taxTotal);                        // total tax (sum of per-line)
         Total = Round(discountedTotal + taxTotal + ShippingAmount);
         BalanceRemaining = Round(Total - AmountSettled);
     }
