@@ -36,25 +36,30 @@ public class Document
 
     public List<LineItem> Items { get; set; } = [];
 
-    // Money rules (see docs/conventions.md): tax is rounded PER LINE ITEM then summed,
-    // never once on the subtotal. All money uses decimal + round-half-away-from-zero.
+    // Money rules — see openapi x-rounding-policy (tax_rounding, discount_application):
+    // everything is PER LINE ITEM, never once on a lump sum. For each line: discount it and
+    // round, then tax that discounted amount and round. `Subtotal` stays PRE-discount (the
+    // raw sum of line totals). All money uses decimal + round-half-away-from-zero.
     public void Recalculate()
     {
-        decimal subtotal = 0m;
-        decimal taxTotal = 0m;
+        var discountFactor = 1m - DiscountPercent / 100m;
+
+        decimal subtotal = 0m;         // pre-discount: raw sum of line totals
+        decimal discountedTotal = 0m;  // sum of per-line discounted amounts
+        decimal taxTotal = 0m;         // sum of per-line tax on the discounted amount
 
         foreach (var item in Items)
         {
             var lineTotal = item.LineTotal;
             subtotal += lineTotal;
-            taxTotal += Round(lineTotal * TaxPercent / 100m);
+
+            var discounted = Round(lineTotal * discountFactor);
+            discountedTotal += discounted;
+            taxTotal += Round(discounted * TaxPercent / 100m);
         }
 
-        subtotal = Round(subtotal);
-        var discount = Round(subtotal * DiscountPercent / 100m);
-
-        Subtotal = subtotal;
-        Total = Round(subtotal - discount + taxTotal + ShippingAmount);
+        Subtotal = Round(subtotal);
+        Total = Round(discountedTotal + taxTotal + ShippingAmount);
         BalanceDue = Round(Total - AmountPaid);
     }
 
