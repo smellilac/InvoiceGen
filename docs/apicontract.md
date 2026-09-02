@@ -13,6 +13,11 @@ it, not the other way around.
 - **Document types** (`/document-types`) — public, unauthenticated. Lets the
   main page render its "what do you want to create?" choices without
   hardcoding the list client-side.
+- **Customers** (`/customers`, `/customers/{id}`) — create, list (search +
+  paginate), get, update (PATCH), soft-delete. Saved customer records a
+  document can reference by `customer_id` instead of retyping the `to` field.
+  Referencing a customer auto-fills `to` at creation time only — the document
+  stores a **frozen snapshot**, never a live link (see key decisions below).
 - **Documents** (`/documents`, `/documents/{id}`, `/documents/{id}/pdf`) —
   create, list (history), get, delete, download PDF. Creating a document
   persists it first and returns JSON with a `pdf_url`, rather than streaming
@@ -22,11 +27,12 @@ it, not the other way around.
 
 ## Explicitly deferred (see `x-future-phases` in the YAML)
 
-- **Customers** as a standalone resource — right now `to` on a document is
-  free text. Deferred until repeat-customer support is actually needed;
-  `Document`'s shape is written so this slots in without breaking existing
-  fields.
 - **Payments & webhooks** — no payment tracking or external notifications yet.
+  As of 0.3.0 this is explicitly scoped down to "not needed yet" (not
+  designed): there's no near-term need to collect money through this system.
+  When revisited, decide first whether it means "record that a payment
+  happened" (small) or "collect via a processor like Stripe" (much bigger —
+  PCI scope, webhook signature verification, idempotency, refunds).
 - **Email delivery** — no "send this document to the customer" endpoint yet
   (mirrors invoice-generator.com's "Save & Send" button, which is also not
   replicated yet).
@@ -45,6 +51,16 @@ just the "what," not the "why."
 - `number` is optional free text; the API never generates or validates it.
 - `GET /documents` is ordered `created_at` descending by default — the
   frontend's number-suggestion behavior depends on this.
+- A document's `to` is a **frozen snapshot** of the customer's info at
+  creation time, not a live view of the Customer record; `customer_id` is
+  kept only for filtering/lookup. Editing a customer never rewrites past
+  documents' `to`. (`GET /customers` is ordered by `name` ascending, since
+  it backs a picker while filling out a form.)
+- Customer deletion is a **soft delete** (`deleted_at`). A soft-deleted
+  customer vanishes from `GET /customers` and can no longer be referenced by
+  new documents (`POST /documents` with its `customer_id` → **422**), but
+  existing documents and `GET /documents?customer_id=...` filtering are
+  unaffected.
 
 ## Known gaps / things to decide before this is "production ready"
 
