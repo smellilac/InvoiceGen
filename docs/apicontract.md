@@ -59,6 +59,12 @@ just the "what," not the "why."
   re-derived from the raw `DocumentType` enum (picker, PDF title, and any
   future surface all reuse it).
 - `number` is optional free text; the API never generates or validates it.
+  `related_document_number` (e.g. the invoice a `credit_note` credits) follows
+  the same rule — free text, never an FK/ID link (0.6.0).
+- Settlement fields are one shared pair, `amount_settled`/`balance_remaining`
+  (renamed from `amount_paid`/`balance_due` in 0.6.0). Meaning depends on
+  `type`: paid/owed for most types, refunded/unrefunded for `credit_note`
+  (`x-settlement-policy`).
 - `GET /documents` is ordered `created_at` descending by default — the
   frontend's number-suggestion behavior depends on this.
 - A document's `to` is a **frozen snapshot** of the customer's info at

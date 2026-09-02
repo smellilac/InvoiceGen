@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.5.0"
+  version: "0.6.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -72,6 +72,17 @@ info:
         ordered). Scope of this change is the enum value only — it does
         not add new fields like an "expected delivery" date distinct from
         `due_date`; that's a separate, not-yet-made decision.
+      0.6.0 — Merged in the two gaps found earlier while comparing a real
+        generated `credit_note` against this spec (these were drafted
+        alongside 0.5.0 but landed in a diverged copy — reconciled here):
+        - Added `related_document_number`, a free-text field (same
+          never-validated philosophy as `number`) so a `credit_note` can say
+          which invoice it credits.
+        - Renamed `amount_paid`/`balance_due` to `amount_settled`/
+          `balance_remaining` and added `x-settlement-policy`: same shared
+          fields across all 12 document types, but meaning depends on
+          `type` — money received for money-owed-to-you types, money
+          refunded back to the customer for `credit_note`.
 
 security:
   - BearerAuth: []
@@ -161,6 +172,36 @@ x-rendering-policy:
     conventional formatting differs from whatever locale the renderer
     happens to default to, so it must be driven off `currency` explicitly
     rather than assumed.
+
+x-settlement-policy:
+  direction_depends_on_type: >-
+    `amount_settled` and `balance_remaining` (on `CreateDocumentRequest` and
+    `Document`) are one shared pair of fields reused across all 12 document
+    types, but which direction the money moves depends on `type`:
+    for money-owed-TO-you types (invoice, receipt, quote, estimate,
+    proforma_invoice, purchase_order, statement, timesheet, work_order,
+    packing_slip, sales_order), `amount_settled` is how much the customer
+    has PAID toward `total`, and `balance_remaining` is what they still owe.
+    For `credit_note`, the money flows the other way: `total` is the
+    credit owed BACK to the customer, `amount_settled` is how much of
+    that credit has actually been REFUNDED to them so far, and
+    `balance_remaining` is the credit not yet refunded.
+  why_one_shared_pair: >-
+    A real credit note generated for comparison (invoice-generator.com's
+    credit note template) has its own separate "Refunded" field distinct
+    from its totals block — confirming this is a real, direction-dependent
+    concept, not something to paper over. This spec still uses ONE shared
+    pair of fields (not `amount_paid`/`amount_refunded` as two separate
+    fields) so `CreateDocumentRequest`/`Document` stay a single uniform
+    shape across every document type — a renderer or client only needs to
+    know `type` to know which direction `amount_settled` means, not to
+    branch on which of two field-name pairs is present.
+  renaming_note: >-
+    Previously named `amount_paid`/`balance_due` (through 0.4.0). Renamed
+    because "amount paid" has no sensible reading for a `credit_note` —
+    money isn't being paid to you, it's being refunded by you. Pre-1.0,
+    pre-implementation spec, so this is a plain rename, not a breaking
+    migration.
 
 x-customer-policy:
   snapshot_not_live_link: >-
@@ -414,7 +455,7 @@ paths:
           schema: { type: integer, minimum: 1, default: 1 }
         - name: per_page
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 30, default: 20 }
       responses:
         '200':
           description: Paginated list of customers
@@ -544,7 +585,7 @@ paths:
           schema: { type: integer, minimum: 1, default: 1 }
         - name: per_page
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 30, default: 20 }
       responses:
         '200':
           description: Paginated list of documents
@@ -888,6 +929,19 @@ components:
             the digits aren't at the end), there is no reliable way to
             guess "the next one" — the frontend should leave the field
             blank rather than insert a wrong guess.
+        related_document_number:
+          type: string
+          nullable: true
+          description: >-
+            Optional free-text reference to another document this one
+            relates to — most commonly the invoice a `credit_note` is
+            crediting, e.g. "INV-0042". Same free-text philosophy as
+            `number`: never validated against, or linked by ID to, an
+            actual document in this system — it may reference an invoice
+            issued outside this system entirely, or from before this
+            system existed. If omitted, left blank on the document.
+            Meaningful mainly for `credit_note`; harmless but typically
+            unused on other types.
         currency: { type: string, default: "USD" }
         items:
           type: array
@@ -906,9 +960,13 @@ components:
           default: 0
         notes: { type: string }
         terms: { type: string }
-        amount_paid:
+        amount_settled:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
           default: 0
+          description: >-
+            Money already paid (most types) or already refunded
+            (`credit_note`) against this document. See `x-settlement-policy`
+            for the full, type-dependent explanation.
 
     Document:
       type: object
@@ -924,6 +982,10 @@ components:
           type: string
           nullable: true
           description: 'Exactly what the user submitted (or null if left blank) — see CreateDocumentRequest.number for the full policy. Never generated or altered by the API.'
+        related_document_number:
+          type: string
+          nullable: true
+          description: 'Exactly what the user submitted (or null if left blank) — see CreateDocumentRequest.related_document_number for the full policy. Never generated, validated, or altered by the API.'
         from: { type: string }
         to: { type: string }
         customer_id:
@@ -936,10 +998,12 @@ components:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
         total:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
-        amount_paid:
+        amount_settled:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
-        balance_due:
+          description: 'Money paid (most types) or refunded (credit_note) so far. See x-settlement-policy.'
+        balance_remaining:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          description: 'total minus amount_settled. Owed by the customer (most types), or owed back to them (credit_note). See x-settlement-policy.'
         pdf_url:
           type: string
           format: uri

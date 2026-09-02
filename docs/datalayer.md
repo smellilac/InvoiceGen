@@ -103,10 +103,11 @@ see `docs/decisions-log.md`. In EF Core, `Document` has an
 | `type` | `text`/enum | invoice, receipt, quote, … |
 | `status` | `text` | `draft`/`generated`; largely nominal (PDF is on-demand) |
 | `number` | `text`, nullable | free text, never generated/validated server-side |
+| `related_document_number` | `text`, nullable | free text (same never-validated policy as `number`); a reference to another document, e.g. the invoice a `credit_note` credits. Not an FK — may point outside this system |
 | `customer_id` | `uuid`, nullable | FK → `customers.id`; a **reference only**, kept even after the customer is soft-deleted. Does *not* keep `to` in sync — see the snapshot rule in `docs/decisions-log.md`. Index it (backs `GET /documents?customer_id=...`) |
 | `from` / `to` | `text` | billing org / customer (multiline free text). `to` is a **frozen snapshot** — auto-filled from the customer at creation if omitted, never rewritten afterward |
 | `currency` | `text` | e.g. USD |
-| `subtotal`, `total`, `amount_paid`, `balance_due` | `numeric` | decimal money — never float. Totals computed discount-first, then per-line tax on the discounted amount (see `docs/decisions-log.md`) |
+| `subtotal`, `total`, `amount_settled`, `balance_remaining` | `numeric` | decimal money — never float. Totals computed discount-first, then per-line tax on the discounted amount (see `docs/decisions-log.md`). `amount_settled`/`balance_remaining` mean paid/owed for most types, refunded/unrefunded for `credit_note` — see `docs/decisions-log.md` settlement policy |
 | `tax_percent`, `discount_percent`, `shipping_amount` | `numeric` | inputs to the totals |
 | `notes` / `terms` | `text`, nullable | |
 | `created_at` / `updated_at` | `timestamptz` | list is ordered `created_at` DESC |
