@@ -19,6 +19,7 @@ public sealed class ListDocumentTypesHandler
         Build(DocumentType.Estimate,        "Give a rough cost estimate for a project."),
         Build(DocumentType.ProformaInvoice, "A preliminary invoice sent before goods are delivered."),
         Build(DocumentType.PurchaseOrder,   "Authorize a purchase from a supplier."),
+        Build(DocumentType.SalesOrder,      "Confirm a sale of goods or services to a customer."),
         Build(DocumentType.Statement,       "Summarize outstanding invoices for a customer."),
         Build(DocumentType.Timesheet,       "Bill for time worked on a project."),
         Build(DocumentType.WorkOrder,       "Authorize and track a specific job or task."),

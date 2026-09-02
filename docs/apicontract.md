@@ -12,7 +12,10 @@ it, not the other way around.
   integration tool.
 - **Document types** (`/document-types`) — public, unauthenticated. Lets the
   main page render its "what do you want to create?" choices without
-  hardcoding the list client-side.
+  hardcoding the list client-side. The `DocumentType` set tracks
+  invoice-generator.com's generators; as of 0.5.0 there are **12 types**
+  (`sales_order` added — see `docs/decisions-log.md`). The enum in
+  `openapi.yaml` is the authoritative list.
 - **Customers** (`/customers`, `/customers/{id}`) — create, list (search +
   paginate), get, update (PATCH), soft-delete. Saved customer records a
   document can reference by `customer_id` instead of retyping the `to` field.

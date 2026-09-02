@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.4.0"
+  version: "0.5.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -59,6 +59,19 @@ info:
           reused anywhere a type is shown to a user (not just the main
           page picker) — the PDF title bug happened because the renderer
           re-derived a title from the raw enum instead of reusing this.
+      0.5.0 — Added `sales_order` to `DocumentType`. We agreed document
+        types should track what invoice-generator.com itself offers, and
+        comparing its 12 generators against our 11 types found exactly one
+        gap: it has a Sales Order Generator and we didn't have a matching
+        type. A real Sales Order PDF generated from that site (Bill To +
+        Ship To + Expected Delivery + PO Number, priced line items, no
+        discount used) confirmed it's a distinct billing-style document,
+        not a duplicate of Purchase Order (money in the opposite direction
+        — a supplier sends you a purchase order, you send a customer a
+        sales order) or Work Order (describes work performed, not goods
+        ordered). Scope of this change is the enum value only — it does
+        not add new fields like an "expected delivery" date distinct from
+        `due_date`; that's a separate, not-yet-made decision.
 
 security:
   - BearerAuth: []
@@ -733,6 +746,7 @@ components:
         - timesheet
         - work_order
         - packing_slip
+        - sales_order
       default: invoice
 
     DocumentTypeInfo:

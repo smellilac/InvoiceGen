@@ -17,13 +17,13 @@ public class ListDocumentTypesTests(TestWebAppFactory factory)
     }
 
     [Fact]
-    public async Task Get_ReturnsAllElevenTypes()
+    public async Task Get_ReturnsAllTwelveTypes()
     {
         var response = await _client.GetAsync("/document-types");
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
 
-        Assert.Equal(11, doc.RootElement.GetArrayLength());
+        Assert.Equal(12, doc.RootElement.GetArrayLength());
     }
 
     [Fact]

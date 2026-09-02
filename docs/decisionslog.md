@@ -111,6 +111,29 @@ rendering surface from inventing its own (and getting it wrong).
 
 ---
 
+## The `DocumentType` set tracks invoice-generator.com's generators
+
+**Decision (0.5.0):** The list of document types mirrors what
+invoice-generator.com itself offers. Comparing its 12 generators against our
+(then) 11 types found exactly one gap, so `sales_order` was added — bringing
+the enum to 12 types.
+
+**Why `sales_order` is a distinct type, not a duplicate:** A real Sales Order
+PDF from that site (Bill To + Ship To + Expected Delivery + PO Number, priced
+line items) confirmed it's its own billing-style document. It is **not** a
+Purchase Order — the money flows the opposite direction (a supplier sends *you*
+a purchase order; *you* send a customer a sales order) — and **not** a Work
+Order, which describes work performed rather than goods ordered.
+
+**Scope:** This change is the **enum value only**. It deliberately does *not*
+add new fields (e.g. an "expected delivery" date distinct from `due_date`);
+whether Sales Order needs its own fields is a separate, not-yet-made decision.
+When adding it in code, extend the `DocumentType` enum (`SalesOrder`) and make
+sure `DocumentTypeInfo.name` carries a display label ("Sales Order") — see the
+canonical-label decision above.
+
+---
+
 ## Document `number` is free text; the API never generates it
 
 **Decision:** `number` on `CreateDocumentRequest`/`Document` is optional,
