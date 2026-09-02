@@ -8,7 +8,7 @@ namespace InvoiceGen.Application.Features.Documents;
 public sealed class ListDocumentsHandler(IAppDbContext db)
 {
     public async Task<ErrorOr<DocumentListDto>> HandleAsync(
-        Guid userId, DocumentType? type, int page, int perPage, CancellationToken cancellationToken)
+        Guid userId, DocumentType? type, Guid? customerId, int page, int perPage, CancellationToken cancellationToken)
     {
         page = page < 1 ? 1 : page;
         if (perPage < 1) perPage = 20;          // invalid/zero → default
@@ -17,6 +17,8 @@ public sealed class ListDocumentsHandler(IAppDbContext db)
         var query = db.Documents.AsNoTracking().Where(d => d.UserId == userId);
         if (type is not null)
             query = query.Where(d => d.Type == type);
+        if (customerId is not null)
+            query = query.Where(d => d.CustomerId == customerId);
 
         var total = await query.CountAsync(cancellationToken);
 

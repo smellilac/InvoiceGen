@@ -3,6 +3,7 @@ using InvoiceGen.Application.Common;
 using InvoiceGen.Domain.Entities;
 using InvoiceGen.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceGen.Application.Features.Documents;
 
@@ -30,7 +31,28 @@ public sealed class CreateDocumentHandler(
             return Error.Validation("from_required",
                 "'from' is required, or set a business profile via PATCH /auth/me.");
 
-        var document = BuildDocument(userId, request, from, clock.GetUtcNow());
+        // Optional saved customer — must belong to the caller and not be soft-deleted
+        // (the global query filter excludes deleted ones, so a deleted id resolves to null).
+        Customer? customer = null;
+        if (request.CustomerId is { } customerId)
+        {
+            customer = await db.Customers
+                .FirstOrDefaultAsync(c => c.Id == customerId && c.UserId == userId, cancellationToken);
+            if (customer is null)
+                return Error.Validation("customer_not_found",
+                    "The referenced customer does not exist or has been deleted.");
+        }
+
+        // `to` is a frozen snapshot: if omitted and a customer is referenced, capture the
+        // customer's CURRENT name/address now. Later customer edits never rewrite it.
+        var to = request.To;
+        if (string.IsNullOrWhiteSpace(to) && customer is not null)
+            to = string.Join("\n", new[] { customer.Name, customer.Address }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (string.IsNullOrWhiteSpace(to))
+            return Error.Validation("to_required", "'to' is required, or reference a customer.");
+
+        var document = BuildDocument(userId, request, from, to, clock.GetUtcNow());
         document.Recalculate();
 
         db.Documents.Add(document);
@@ -40,16 +62,17 @@ public sealed class CreateDocumentHandler(
     }
 
     private static Document BuildDocument(
-        Guid userId, CreateDocumentRequest request, string from, DateTimeOffset now) => new()
+        Guid userId, CreateDocumentRequest request, string from, string to, DateTimeOffset now) => new()
     {
         Id = Guid.NewGuid(),
         UserId = userId,
+        CustomerId = request.CustomerId,
         Type = request.Type,
         Status = DocumentStatus.Generated, // PDF is rendered on demand, so always available
         Number = request.Number,
         RelatedDocumentNumber = request.RelatedDocumentNumber,
         From = from,
-        To = request.To,
+        To = to,
         Currency = string.IsNullOrWhiteSpace(request.Currency) ? "USD" : request.Currency,
         Date = request.Date,
         DueDate = request.DueDate,

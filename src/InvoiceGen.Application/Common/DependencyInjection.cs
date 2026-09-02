@@ -1,5 +1,6 @@
 using FluentValidation;
 using InvoiceGen.Application.Features.Auth;
+using InvoiceGen.Application.Features.Customers;
 using InvoiceGen.Application.Features.Documents;
 using InvoiceGen.Application.Features.DocumentTypes;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,7 @@ public static class DependencyInjection
         services.AddDocumentTypesHandlers();
         services.AddAuthHandlers();
         services.AddDocumentsHandlers();
+        services.AddCustomersHandlers();
 
         return services;
     }
@@ -41,5 +43,17 @@ public static class DependencyInjection
         services.AddScoped<GetDocumentPdfHandler>();
 
         services.AddScoped<IValidator<CreateDocumentRequest>, CreateDocumentRequestValidator>();
+    }
+
+    private static void AddCustomersHandlers(this IServiceCollection services)
+    {
+        services.AddScoped<CreateCustomerHandler>();
+        services.AddScoped<ListCustomersHandler>();
+        services.AddScoped<GetCustomerHandler>();
+        services.AddScoped<UpdateCustomerHandler>();
+        services.AddScoped<DeleteCustomerHandler>();
+
+        services.AddScoped<IValidator<CreateCustomerRequest>, CreateCustomerRequestValidator>();
+        services.AddScoped<IValidator<UpdateCustomerRequest>, UpdateCustomerRequestValidator>();
     }
 }

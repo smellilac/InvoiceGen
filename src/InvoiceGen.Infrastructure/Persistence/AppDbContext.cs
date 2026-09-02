@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<LineItem> LineItems => Set<LineItem>();
+    public DbSet<Customer> Customers => Set<Customer>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

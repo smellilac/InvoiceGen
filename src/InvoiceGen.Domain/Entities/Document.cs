@@ -6,6 +6,9 @@ public class Document
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
+    // Optional reference to a saved Customer, kept for filtering/lookup only.
+    // `To` is a frozen snapshot taken at creation — editing the customer never rewrites it.
+    public Guid? CustomerId { get; set; }
     public DocumentType Type { get; set; }
     public DocumentStatus Status { get; set; }
 
