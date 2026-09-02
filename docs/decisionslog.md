@@ -62,6 +62,55 @@ default; if it's ever revisited, update this entry and
 
 ---
 
+## Discount is applied before tax
+
+**Decision (documented in 0.4.0):** Tax is computed on the subtotal *after*
+`discount_percent` has been subtracted — never on the raw pre-discount
+subtotal.
+
+**Why:** Both orderings are defensible, but they produce different totals, so
+one has to be fixed. Verified arithmetic: subtotal $4,520.00, 5% discount
+(−$226.00) leaves $4,294.00; 21% tax on that discounted amount is **$901.74**.
+Taxing the raw $4,520.00 instead would give $949.20 — a different number. This
+API always produces $901.74. This was real and consistently implemented; it
+had just never been written down until the Packing Slip money-hiding bug
+surfaced the gap. If revisited, update this entry and
+`x-rounding-policy.discount_tax_ordering` together.
+
+---
+
+## Rendered amounts are formatted per the document's own currency
+
+**Decision (added in 0.4.0):** The PDF renderer (and any future rendering
+surface) must format monetary amounts using the number-formatting convention
+of the document's own `currency` field — thousands separator, decimal
+separator, symbol placement — not a single fixed host culture/locale applied
+regardless of currency.
+
+**Why:** A USD document must render `$5,220.74`, not `5 220,74` (a
+European-style grouping) just because the rendering process defaults to one
+locale. This bug class is invisible until a document is generated in a
+currency whose conventional formatting differs from the renderer's default,
+so formatting must be driven off `currency` explicitly rather than assumed.
+See `x-rendering-policy` in `docs/openapi.yaml`.
+
+---
+
+## A document type's display label comes from one canonical field
+
+**Decision (tightened in 0.4.0):** `DocumentTypeInfo.name` is the single
+source of truth for a document type's human-readable label, and must be reused
+anywhere a type is shown to a user — the main-page picker, PDF titles, and any
+future surface (email subjects, etc.).
+
+**Why:** The PDF title bug happened because the renderer re-derived a title
+from the raw `DocumentType` enum instead of reusing this field. The enum's
+`credit_note` — or a naive `.ToString()` on a `CreditNote` C# enum member — is
+not fit for display. Centralizing the label in one field prevents each
+rendering surface from inventing its own (and getting it wrong).
+
+---
+
 ## Document `number` is free text; the API never generates it
 
 **Decision:** `number` on `CreateDocumentRequest`/`Document` is optional,

@@ -93,6 +93,17 @@ each one.
   subtotal. The two methods can differ by 1 minor unit; this repo always
   uses the per-line method. See `docs/decisions-log.md` for the worked
   example.
+- **Discount is applied before tax.** Tax is computed on the subtotal *after*
+  `discount_percent` is subtracted, never on the raw subtotal. Worked
+  example: $4,520.00 − 5% = $4,294.00, then 21% tax = $901.74 (not $949.20).
+  See `docs/decisions-log.md`.
+- **Rendered amounts are formatted per the document's own `currency`**, not a
+  fixed host locale — a USD document renders `$5,220.74`, never `5 220,74`.
+  Drive number formatting off `currency` explicitly in the PDF renderer.
+- **A document type's display label comes from `DocumentTypeInfo.name`** — the
+  single source of truth. Reuse it everywhere a type is shown (picker, PDF
+  title, future surfaces); never re-derive it from the raw `DocumentType`
+  enum (`.ToString()` on `CreditNote` is not fit for display).
 - **Document `number` is free-text and optional. The API never generates,
   validates, or mutates it.** Any "suggest the next number" behavior is a
   frontend-only convenience using a conservative regex (safe only when the

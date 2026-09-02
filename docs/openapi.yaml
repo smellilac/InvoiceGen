@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.3.0"
+  version: "0.4.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -45,6 +45,20 @@ info:
         to collect money through this system. See `x-customer-policy` for
         the one real design decision this introduced: documents snapshot a
         customer's info at creation time rather than staying live-linked.
+      0.4.0 — Closed three gaps found while fixing the Packing Slip
+        money-hiding bug and the PDF title bug:
+        - Documented discount-before-tax ordering in `x-rounding-policy`
+          (tax is computed on the post-discount amount, not the raw
+          subtotal) — this was real and consistently implemented, but had
+          never been written down.
+        - Added `x-rendering-policy`, documenting that rendered amounts
+          must use the number-formatting convention of the document's own
+          `currency`, not a fixed locale.
+        - Tightened `DocumentTypeInfo.name`'s description to state it is
+          the canonical human-readable label for a document type, to be
+          reused anywhere a type is shown to a user (not just the main
+          page picker) — the PDF title bug happened because the renderer
+          re-derived a title from the raw enum instead of reusing this.
 
 security:
   - BearerAuth: []
@@ -77,6 +91,36 @@ x-rounding-policy:
     Both are "correct" methods; this API always uses the per-line one, so
     implementations must apply it consistently or totals will mismatch
     what a client re-derives from the individual line items.
+  discount_tax_ordering: >-
+    Discount is applied BEFORE tax: tax is calculated on the subtotal
+    AFTER `discount_percent` has been subtracted, never on the raw
+    subtotal. This is a real, consistently-applied business decision, not
+    an implementation detail — computing tax on the pre-discount subtotal
+    is also a defensible method, but this API does not use it, so
+    implementations must apply this ordering or totals will mismatch what
+    a client re-derives from `subtotal`, `discount_percent`, and
+    `tax_percent`.
+    Worked example (verified arithmetic, not hypothetical): subtotal
+    $4,520.00 with a 5% discount ($226.00) leaves $4,294.00; 21% tax on
+    that discounted amount is $901.74. Applying 21% tax to the raw
+    $4,520.00 subtotal instead would give $949.20 — a different, incorrect
+    number. This API always produces $901.74 for these inputs.
+
+x-rendering-policy:
+  currency_correct_number_formatting: >-
+    Rendered documents (PDF, and any future rendering surface) MUST format
+    monetary amounts using the number-formatting convention that actually
+    matches the document's own `currency` field — thousands separator,
+    decimal separator, and symbol placement — not a single fixed
+    culture/locale applied regardless of currency. Concretely: a USD
+    document must render as `$5,220.74` (comma thousands separator,
+    period decimal separator), never as `5 220,74` (space thousands
+    separator, comma decimal separator — a European-style grouping) just
+    because the rendering code defaults to one locale. This bug class is
+    invisible until a document is generated in a currency whose
+    conventional formatting differs from whatever locale the renderer
+    happens to default to, so it must be driven off `currency` explicitly
+    rather than assumed.
 
 x-customer-policy:
   snapshot_not_live_link: >-
@@ -666,11 +710,26 @@ components:
 
     DocumentTypeInfo:
       type: object
-      description: Metadata the main page uses to render one "what to generate" choice.
+      description: >-
+        Metadata for one document type. Originally introduced for the main
+        page's "what to generate" picker, but `name` in particular is now
+        the canonical source of a type's display name — see its own
+        description.
       properties:
         id:
           $ref: '#/components/schemas/DocumentType'
-        name: { type: string, example: "Invoice" }
+        name:
+          type: string
+          example: "Invoice"
+          description: >-
+            The canonical human-readable label for this document type.
+            This is the single source of truth for how a type is displayed
+            to a user, and MUST be reused anywhere a type is shown —
+            the main page picker, PDF titles, and any future surface
+            (email subject lines, etc.) — rather than re-derived from the
+            raw `DocumentType` enum value. (The enum's `credit_note`, or a
+            naive `.ToString()` on a `CreditNote` C# enum member, is not
+            fit for display — this field is.)
         description: { type: string, example: "Bill a customer for products or services." }
         icon: { type: string, description: "Icon identifier for the frontend.", example: "invoice" }
 
@@ -797,7 +856,10 @@ components:
           type: number
           default: 0
           description: 'e.g. 8.5 for 8.5%. See x-rounding-policy for how this is applied (per line item, not on the subtotal).'
-        discount_percent: { type: number, default: 0 }
+        discount_percent:
+          type: number
+          default: 0
+          description: 'e.g. 5 for 5%. Applied BEFORE tax — see x-rounding-policy (discount_tax_ordering) for the exact ordering and a worked example.'
         shipping_amount:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
           default: 0

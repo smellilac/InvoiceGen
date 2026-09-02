@@ -12,9 +12,10 @@ code/infrastructure exists, and note where reality diverges from the plan.
 2. **Main page**: calls `GET /document-types` (public, no auth) to render
    the "what do you want to create?" picker.
 3. **Create document**: authenticated `POST /documents` with the filled-out
-   form. The backend validates the request, computes the totals (per-line
-   tax then summed — see `docs/conventions.md`), persists a `Document` plus
-   its `line_items`, and returns the `Document` JSON (including a `pdf_url`).
+   form. The backend validates the request, computes the totals (discount
+   first, then per-line tax on the discounted amount, then summed — see
+   `docs/conventions.md`), persists a `Document` plus its `line_items`, and
+   returns the `Document` JSON (including a `pdf_url`).
    If the request carries a `customer_id`, the handler validates it belongs
    to the caller and isn't soft-deleted (else **422**), and — when `to` is
    omitted — snapshots the customer's current name/address into `to`. That
@@ -41,6 +42,12 @@ code/infrastructure exists, and note where reality diverges from the plan.
   becomes slow enough to hurt latency (complex templates) — not a Phase 1 need.
 - **`status`:** `draft`/`generated` is largely nominal now, since a PDF is
   always available on demand.
+- **Number formatting:** monetary amounts are formatted per the document's own
+  `currency` (`$5,220.74`, not `5 220,74`), driven off `currency` explicitly —
+  never a fixed host locale. See `x-rendering-policy` / `docs/conventions.md`.
+- **Type label:** the document title reuses `DocumentTypeInfo.name`, never a
+  value re-derived from the raw `DocumentType` enum (source of the PDF title
+  bug). See `docs/decisions-log.md`.
 
 ## Not yet decided
 
