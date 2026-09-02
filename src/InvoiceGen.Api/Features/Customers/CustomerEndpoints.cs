@@ -43,6 +43,8 @@ public static class CustomerEndpoints
     private static void MapList(RouteGroupBuilder group)
     {
         group.MapGet("/", async (
+            int? page,
+            int? per_page,
             ClaimsPrincipal principal,
             ListCustomersHandler handler,
             IProblemDetailsService pds,
@@ -52,13 +54,13 @@ public static class CustomerEndpoints
             var userId = principal.GetUserId();
             if (userId is null) return Results.Unauthorized();
 
-            var result = await handler.HandleAsync(userId.Value, ct);
+            var result = await handler.HandleAsync(userId.Value, page ?? 1, per_page ?? 20, ct);
             return result.IsError
                 ? await result.ToProblemDetails(pds, http)
                 : Results.Ok(result.Value);
         })
         .WithName("ListCustomers")
-        .WithSummary("List the current user's active customers (ordered by name)");
+        .WithSummary("List the current user's active customers (ordered by name, paginated)");
     }
 
     private static void MapGet(RouteGroupBuilder group)

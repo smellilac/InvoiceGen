@@ -80,9 +80,31 @@ public class CustomersTests(TestWebAppFactory factory) : IClassFixture<TestWebAp
         var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(2, body.GetArrayLength());
-        Assert.Equal("Anna", body[0].GetProperty("name").GetString()); // name ASC
-        Assert.Equal("Zoe", body[1].GetProperty("name").GetString());
+        Assert.Equal(2, body.GetProperty("total").GetInt32());
+        var data = body.GetProperty("data");
+        Assert.Equal(2, data.GetArrayLength());
+        Assert.Equal("Anna", data[0].GetProperty("name").GetString()); // name ASC
+        Assert.Equal("Zoe", data[1].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task List_Paginates()
+    {
+        var client = await AuthedClientAsync("cust-paginate@test.com");
+        foreach (var name in new[] { "Alice", "Bob", "Carol" })
+            await client.PostAsJsonAsync("/customers", NewCustomer(name));
+
+        var page1 = JsonDocument.Parse(await (await client.GetAsync("/customers?page=1&per_page=2"))
+            .Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(3, page1.GetProperty("total").GetInt32());
+        Assert.Equal(2, page1.GetProperty("data").GetArrayLength());
+        Assert.Equal("Alice", page1.GetProperty("data")[0].GetProperty("name").GetString());
+
+        var page2 = JsonDocument.Parse(await (await client.GetAsync("/customers?page=2&per_page=2"))
+            .Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(3, page2.GetProperty("total").GetInt32());
+        Assert.Equal(1, page2.GetProperty("data").GetArrayLength());
+        Assert.Equal("Carol", page2.GetProperty("data")[0].GetProperty("name").GetString());
     }
 
     [Fact]
@@ -123,7 +145,7 @@ public class CustomersTests(TestWebAppFactory factory) : IClassFixture<TestWebAp
 
         var list = await client.GetAsync("/customers");
         var body = JsonDocument.Parse(await list.Content.ReadAsStringAsync()).RootElement;
-        Assert.Equal(0, body.GetArrayLength());
+        Assert.Equal(0, body.GetProperty("total").GetInt32());
     }
 
     // ---- Cross-cutting with Documents (x-customer-policy) ----

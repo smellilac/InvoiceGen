@@ -29,3 +29,9 @@ public sealed record CustomerDto(
     public static CustomerDto FromEntity(Customer c) => new(
         c.Id, c.Name, c.Email, c.Address, c.Phone, c.Notes, c.CreatedAt, c.UpdatedAt);
 }
+
+public sealed record CustomerListDto(
+    IReadOnlyList<CustomerDto> Data,
+    int Page,
+    int PerPage,
+    int Total);
