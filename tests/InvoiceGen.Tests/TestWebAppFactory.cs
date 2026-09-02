@@ -2,28 +2,26 @@ using InvoiceGen.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using Testcontainers.PostgreSql;
+using Xunit;
 
 namespace InvoiceGen.Tests;
 
-// Docker isn't available in this environment, so instead of Testcontainers +
-// Postgres we back the app with an in-memory SQLite database (schema created
-// via EnsureCreated, independent of the Npgsql migration). Also supplies the
-// Jwt config the app needs to start, which normally comes from user-secrets.
-public sealed class TestWebAppFactory : WebApplicationFactory<Program>
+// Spins up a throwaway PostgreSQL container (same engine as production) for the
+// test run, points the app's AppDbContext at it, and applies the real EF
+// migrations — so tests exercise the actual database and migrations, not a
+// SQLite stand-in. Requires a running Docker daemon.
+public sealed class TestWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly SqliteConnection _connection = new("DataSource=:memory:");
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+        .Build();
 
     public TestWebAppFactory()
     {
-        _connection.Open();
-
-        // Env vars are read by WebApplication.CreateBuilder into the startup-time
-        // configuration (unlike ConfigureAppConfiguration in minimal hosting).
-        // "__" is the nesting separator, so Jwt__Key => Jwt:Key.
+        // Env vars reach the startup-time configuration (unlike ConfigureAppConfiguration
+        // in minimal hosting). "__" is the nesting separator, so Jwt__Key => Jwt:Key.
         Environment.SetEnvironmentVariable("Jwt__Key", "test-signing-key-that-is-definitely-long-enough-123456");
         Environment.SetEnvironmentVariable("Jwt__Issuer", "invoicegen");
         Environment.SetEnvironmentVariable("Jwt__Audience", "invoicegen");
@@ -31,6 +29,8 @@ public sealed class TestWebAppFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseEnvironment("Testing"); // disables the per-IP auth rate limiter (see Program.cs)
+
         builder.ConfigureTestServices(services =>
         {
             var toRemove = services.Where(d =>
@@ -39,21 +39,27 @@ public sealed class TestWebAppFactory : WebApplicationFactory<Program>
                 d.ServiceType.Name.Contains("IDbContextOptionsConfiguration")).ToList();
             foreach (var d in toRemove) services.Remove(d);
 
-            services.AddDbContext<AppDbContext>(o => o.UseSqlite(_connection));
+            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_postgres.GetConnectionString()));
         });
     }
 
-    protected override IHost CreateHost(IHostBuilder builder)
+    public async Task InitializeAsync()
     {
-        var host = base.CreateHost(builder);
-        using var scope = host.Services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
-        return host;
+        await _postgres.StartAsync();
+
+        // Accessing Services builds the host (with the container connection string above),
+        // then apply migrations to the fresh database.
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.MigrateAsync();
     }
 
-    protected override void Dispose(bool disposing)
+    // Explicit: xUnit's IAsyncLifetime.DisposeAsync returns Task, while the base
+    // WebApplicationFactory.DisposeAsync returns ValueTask — the explicit impl
+    // disambiguates and disposes both.
+    async Task IAsyncLifetime.DisposeAsync()
     {
-        base.Dispose(disposing);
-        if (disposing) _connection.Dispose();
+        await _postgres.DisposeAsync();
+        await base.DisposeAsync();
     }
 }

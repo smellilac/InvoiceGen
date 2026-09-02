@@ -1,0 +1,141 @@
+using System.Security.Claims;
+using InvoiceGen.Api.Common;
+using InvoiceGen.Application.Features.Documents;
+
+namespace InvoiceGen.Api.Features.Documents;
+
+public static class DocumentEndpoints
+{
+    public static void Map(IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/documents").WithTags("documents").RequireAuthorization();
+
+        MapCreate(group);
+        MapList(group);
+        MapGet(group);
+        MapDelete(group);
+        MapGetPdf(group);
+    }
+
+    private static void MapCreate(RouteGroupBuilder group)
+    {
+        group.MapPost("/", async (
+            CreateDocumentRequest request,
+            ClaimsPrincipal principal,
+            CreateDocumentHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, request, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.Created($"/documents/{result.Value.Id}", result.Value);
+        })
+        .AddEndpointFilter<ValidationFilter<CreateDocumentRequest>>()
+        .WithName("CreateDocument")
+        .WithSummary("Create a document from the submitted form");
+    }
+
+    private static void MapList(RouteGroupBuilder group)
+    {
+        group.MapGet("/", async (
+            string? type,
+            int? page,
+            int? per_page,
+            ClaimsPrincipal principal,
+            ListDocumentsHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            Domain.Enums.DocumentType? typeFilter = null;
+            if (!string.IsNullOrWhiteSpace(type))
+            {
+                if (!DocumentTypeApi.TryParse(type, out var parsed))
+                    return Results.Problem(statusCode: 422, title: "invalid_type",
+                        detail: $"Unknown document type '{type}'.");
+                typeFilter = parsed;
+            }
+
+            var result = await handler.HandleAsync(userId.Value, typeFilter, page ?? 1, per_page ?? 20, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.Ok(result.Value);
+        })
+        .WithName("ListDocuments")
+        .WithSummary("List the current user's documents (newest first, paginated)");
+    }
+
+    private static void MapGet(RouteGroupBuilder group)
+    {
+        group.MapGet("/{documentId:guid}", async (
+            Guid documentId,
+            ClaimsPrincipal principal,
+            GetDocumentHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, documentId, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.Ok(result.Value);
+        })
+        .WithName("GetDocument")
+        .WithSummary("Get one document by id");
+    }
+
+    private static void MapDelete(RouteGroupBuilder group)
+    {
+        group.MapDelete("/{documentId:guid}", async (
+            Guid documentId,
+            ClaimsPrincipal principal,
+            DeleteDocumentHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, documentId, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.NoContent();
+        })
+        .WithName("DeleteDocument")
+        .WithSummary("Delete a document from history");
+    }
+
+    private static void MapGetPdf(RouteGroupBuilder group)
+    {
+        group.MapGet("/{documentId:guid}/pdf", async (
+            Guid documentId,
+            ClaimsPrincipal principal,
+            GetDocumentPdfHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, documentId, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.File(result.Value.Content, "application/pdf", result.Value.FileName);
+        })
+        .WithName("DownloadDocumentPdf")
+        .WithSummary("Download the document as a PDF (rendered on demand)");
+    }
+}

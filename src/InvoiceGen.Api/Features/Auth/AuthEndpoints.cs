@@ -8,7 +8,7 @@ public static class AuthEndpoints
 {
     public static void Map(IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/auth").WithTags("auth");
+        var group = app.MapGroup("/auth").WithTags("auth").RequireRateLimiting("auth");
 
         MapRegister(group);
         MapLogin(group);
