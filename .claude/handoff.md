@@ -1,35 +1,37 @@
-# Handoff — feature/auth
+# Handoff — feature/documents
 
 ## Completed
-- [x] Auth feature end-to-end: Register, Login, Refresh, Logout, GET/PATCH /auth/me
-- [x] ASP.NET Identity user store (AppUser : IdentityUser<Guid>) + business fields
-- [x] JWT access token (sub + jti) + DB-backed hashed rotating refresh token
-- [x] Account lockout (5 attempts / 5 min)
-- [x] EF Core + Npgsql + InitialAuth migration; snake_case JSON matching OpenAPI
-- [x] Secrets in user-secrets (Jwt:Key set; connection string = user to set); fail-fast key check
-- [x] 17 integration tests (WebApplicationFactory + in-memory SQLite) — all passing
-- [x] All handlers/services/endpoints/Program.cs reviewed
-- [x] Checkpoint committed: 564a785
+- [x] Documents feature: Create / List / Get / Delete / GetPdf
+- [x] Domain: Document + LineItem (child table), Recalculate() with per-line tax rounding
+- [x] On-demand QuestPDF rendering (never stored); Packing Slip hides pricing/totals
+- [x] Friendly type names from single source (DocumentTypeApi.ToDisplayName) — /document-types + PDF title
+- [x] FluentValidation for CreateDocumentRequest via reusable ValidationFilter<T> (422, all fields)
+- [x] CreateDocumentHandler slimmed; entity build extracted to BuildDocument
+- [x] List pagination: newest-first + Id tiebreaker; per_page default 20 / max 30
+- [x] Per-IP rate limiter on /auth (20/min), off under Testing env
+- [x] JWT setup extracted to AddJwtBearerAuthentication
+- [x] Tests migrated to Testcontainers + PostgreSQL (applies real migrations); SQLite + its converter removed
+- [x] Build: GREEN. Checkpoint: 45a6ea8
 
-## Pending
-- [ ] USER ACTION: set connection string in user-secrets:
-      dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=invoicegen;Username=postgres;Password=postgres" --project src/InvoiceGen.Api
-- [ ] Run a real Postgres + apply migration:
-      dotnet ef database update --project src/InvoiceGen.Infrastructure --startup-project src/InvoiceGen.Api
-- [ ] Next feature: Documents (Create, List, Get, GetPdf, Delete) — needs the
-      JSON-vs-child-table decision for line items (see docs/data-layer.md)
-- [ ] Deferred hardening (not bugs): refresh-token reuse detection (revoke family),
-      transaction around create+issue token, expired-token cleanup job,
-      FluentValidation for request shapes, PATCH can't-clear-a-field
+## Pending / next steps
+- [ ] **RUN THE TESTS** in a Docker-enabled session — never executed since the Testcontainers switch:
+      cd /mnt/c/Users/dmitrii/Projects/invoiceapp && dotnet test InvoiceGen.slnx
+      (first run pulls postgres:16-alpine; each test class starts its own container)
+- [ ] docs/openapi.yaml: `per_page` still says `maximum: 100` but code now caps at 30 — update to match.
+      Also the file has an uncommitted EOL-only change in the working tree (excluded from 45a6ea8).
+- [ ] Customers feature (0.3.0, per docs) — not yet implemented in code: soft-delete,
+      frozen `to` snapshot; add AddCustomersHandlers() + validator + endpoints.
+- [ ] Deferred hardening: refresh-token reuse detection, expired-token cleanup, transaction
+      around create+issue, ExecuteDelete option for DeleteDocument, PDF text-extraction test
+      to assert packing-slip has no pricing.
 
-## Learned
-- ErrorOr implicit conversion doesn't work through interface type params (use concrete T[]/List<T>)
-- Minimal-hosting: config via factory ConfigureAppConfiguration doesn't reach startup-time
-  builder.Configuration reliably — use env vars in tests
-- Docker unavailable here → tests use in-memory SQLite (EnsureCreated) instead of Testcontainers
-- EF tooling: no design-time factory; use --startup-project src/InvoiceGen.Api (needs
-  EntityFrameworkCore.Design ref in Api)
+## Learned / non-obvious
+- Testcontainers 4.14: PostgreSqlBuilder parameterless ctor is obsolete → use new PostgreSqlBuilder("postgres:16-alpine")
+- xUnit v2 here: IAsyncLifetime uses Task; its DisposeAsync clashes with WebApplicationFactory's
+  ValueTask one → implement IAsyncLifetime.DisposeAsync explicitly
+- Rate limiter would throttle the test suite (same loopback IP) → gated behind non-Testing env
+- ValidationFilter<T> is generic/reused; each request adds only a validator + one .AddEndpointFilter line
 
 ## Context
-- Branch: feature/auth
-- Checkpoint: 564a785
+- Branch: feature/documents
+- Checkpoint: 45a6ea8
