@@ -25,8 +25,9 @@ implementation choices land; don't let them go stale once code exists.
   the download endpoint); synchronous. See `docs/decisions-log.md`.
 - Email delivery: `POST /documents/{id}/send` emails the rendered PDF —
   **asynchronous** (enqueue + `202 Accepted`, a background worker does the
-  actual send). Provider not yet chosen. See `docs/decisions-log.md`.
-- Frontend: **not yet decided**
+  actual send). Provider: **Brevo**, reached via **SMTP** using the
+  **MailKit** library (not Brevo's REST SDK). See `docs/decisions-log.md`.
+- Frontend: **Angular** (with its ecosystem — Angular CLI, RxJS, etc.)
 
 ## Solution structure
 
