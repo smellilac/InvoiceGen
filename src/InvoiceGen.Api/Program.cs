@@ -40,6 +40,7 @@ if (rateLimitingEnabled)
     });
 }
 
+builder.Services.AddFrontendCors(builder.Configuration);
 builder.Services.AddInvoiceGenApplicationLayer();
 builder.Services.AddInvoiceGenInfrastructureLayer(builder.Configuration, builder.Environment);
 builder.Services.AddJwtBearerAuthentication(builder.Configuration);
@@ -53,6 +54,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseExceptionHandler();
 app.UseHttpsRedirection();
+app.UseCors(CorsExtensions.PolicyName);
 if (rateLimitingEnabled)
     app.UseRateLimiter();
 app.UseAuthentication();
