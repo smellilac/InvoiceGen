@@ -45,6 +45,10 @@ public sealed record DocumentDto(
     decimal Total,
     decimal AmountSettled,
     decimal BalanceRemaining,
+    DateTimeOffset? LastSentAt,
+    int SendCount,
+    SendStatus? LastSendStatus,
+    string? LastSendError,
     string PdfUrl,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -52,6 +56,7 @@ public sealed record DocumentDto(
     public static DocumentDto FromEntity(Document d) => new(
         d.Id, d.Type, d.Status, d.Number, d.RelatedDocumentNumber, d.From, d.To, d.Currency,
         d.Subtotal, d.DiscountAmount, d.TaxAmount, d.Total, d.AmountSettled, d.BalanceRemaining,
+        d.LastSentAt, d.SendCount, d.LastSendStatus, d.LastSendError,
         $"/documents/{d.Id}/pdf", d.CreatedAt, d.UpdatedAt);
 }
 

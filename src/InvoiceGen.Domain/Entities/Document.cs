@@ -41,6 +41,13 @@ public class Document
     public string? Notes { get; set; }
     public string? Terms { get; set; }
 
+    // Email send tracking (x-email-delivery-policy). SendCount counts attempts (incremented
+    // at enqueue); LastSentAt/LastSendStatus/LastSendError are updated by the worker.
+    public DateTimeOffset? LastSentAt { get; private set; }
+    public int SendCount { get; private set; }
+    public SendStatus? LastSendStatus { get; private set; }
+    public string? LastSendError { get; private set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
@@ -76,4 +83,31 @@ public class Document
     }
 
     private static decimal Round(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    // --- Email send state transitions (x-email-delivery-policy) ---
+
+    // At enqueue: count the attempt and mark queued. LastSentAt is NOT touched here.
+    public void MarkSendEnqueued(DateTimeOffset now)
+    {
+        SendCount++;
+        LastSendStatus = SendStatus.Queued;
+        UpdatedAt = now;
+    }
+
+    // Worker, on a successful send: record when it actually reached the customer.
+    public void MarkSent(DateTimeOffset now)
+    {
+        LastSentAt = now;
+        LastSendStatus = SendStatus.Sent;
+        LastSendError = null;
+        UpdatedAt = now;
+    }
+
+    // Worker, on failure: keep LastSentAt (last real delivery) untouched; surface the reason.
+    public void MarkSendFailed(string error, DateTimeOffset now)
+    {
+        LastSendStatus = SendStatus.Failed;
+        LastSendError = error;
+        UpdatedAt = now;
+    }
 }

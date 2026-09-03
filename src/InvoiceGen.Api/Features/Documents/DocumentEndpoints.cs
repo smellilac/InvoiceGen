@@ -15,6 +15,7 @@ public static class DocumentEndpoints
         MapGet(group);
         MapDelete(group);
         MapGetPdf(group);
+        MapSend(group);
     }
 
     private static void MapCreate(RouteGroupBuilder group)
@@ -138,5 +139,32 @@ public static class DocumentEndpoints
         })
         .WithName("DownloadDocumentPdf")
         .WithSummary("Download the document as a PDF (rendered on demand)");
+    }
+
+    private static void MapSend(RouteGroupBuilder group)
+    {
+        // Body is optional (empty is valid when the document has a customer with an email),
+        // so the parameter is nullable → an empty body binds to null.
+        group.MapPost("/{documentId:guid}/send", async (
+            Guid documentId,
+            SendDocumentRequest? request,
+            ClaimsPrincipal principal,
+            SendDocumentHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, documentId, request ?? new SendDocumentRequest(null, null), ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.Accepted($"/documents/{result.Value.Id}", result.Value);
+        })
+        .AddEndpointFilter<ValidationFilter<SendDocumentRequest>>()
+        .RequireRateLimiting("auth") // same per-IP limiter as /auth (x-email-delivery-policy)
+        .WithName("SendDocument")
+        .WithSummary("Email the document's PDF to a customer (async — returns 202)");
     }
 }

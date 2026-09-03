@@ -41,8 +41,10 @@ public static class DependencyInjection
         services.AddScoped<GetDocumentHandler>();
         services.AddScoped<DeleteDocumentHandler>();
         services.AddScoped<GetDocumentPdfHandler>();
+        services.AddScoped<SendDocumentHandler>();
 
         services.AddScoped<IValidator<CreateDocumentRequest>, CreateDocumentRequestValidator>();
+        services.AddScoped<IValidator<SendDocumentRequest>, SendDocumentRequestValidator>();
     }
 
     private static void AddCustomersHandlers(this IServiceCollection services)

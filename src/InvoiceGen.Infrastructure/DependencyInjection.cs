@@ -3,6 +3,7 @@ using InvoiceGen.Application.Features.Auth;
 using InvoiceGen.Application.Features.Documents;
 using InvoiceGen.Domain.Entities;
 using InvoiceGen.Infrastructure.Auth;
+using InvoiceGen.Infrastructure.Email;
 using InvoiceGen.Infrastructure.Pdf;
 using InvoiceGen.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -41,6 +42,12 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IRefreshTokenService, RefreshTokenService>();
         services.AddSingleton<IPdfRenderer, PdfRenderer>();
+
+        // Email delivery: in-process queue + placeholder sender + background worker.
+        services.AddSingleton<EmailQueue>();
+        services.AddSingleton<IEmailQueue>(sp => sp.GetRequiredService<EmailQueue>());
+        services.AddSingleton<IEmailSender, LoggingEmailSender>();
+        services.AddHostedService<EmailSendingWorker>();
 
         return services;
     }
