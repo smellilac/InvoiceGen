@@ -445,3 +445,60 @@ no background job or queue.
 async infrastructure yet. Offload to a background job only if/when rendering
 becomes slow enough to hurt request latency (e.g. very complex templates) —
 noted as a future revisit, not a Phase 1 need.
+
+---
+
+## Email provider is Brevo
+
+**Decision:** Outbound email (the `/documents/{id}/send` feature) goes through
+**Brevo** (formerly Sendinblue).
+
+**Why:** It has a genuinely usable free tier (300 emails/day) with no card
+required, which fits a Phase-1 product with low volume, and it offers a
+plain **SMTP relay** (not only a proprietary API) — which is what lets us
+stay provider-agnostic (see the next entry). Resend was the main
+alternative and is a nice developer experience, but its free tier is smaller
+and it leans toward its own API/SDK; Brevo's SMTP relay + free tier was the
+better fit for "send a few invoices without signing up for a paid plan or
+locking into an SDK." Not a deep or hard-to-reverse choice — the point of the
+SMTP decision below is that the provider barely matters.
+
+---
+
+## Email is sent via SMTP (MailKit), not a provider REST SDK
+
+**Decision:** Emails are sent with the **MailKit** library over Brevo's
+**SMTP** relay, behind our own `IEmailSender` port. We deliberately do NOT
+use Brevo's REST API / official SDK.
+
+**Why:** SMTP is a universal protocol every provider speaks, so **switching
+providers becomes a credentials change, not a code change** — point MailKit
+at SendGrid/Mailgun/Postmark/SES's SMTP endpoint and update host + key, and
+nothing in the codebase moves. A provider's REST SDK would couple us to that
+one vendor's client library and types; migrating later would mean rewriting
+the sender. MailKit is the de-facto .NET SMTP client (robust modern TLS,
+attachments, async) and is a thin dependency. Concretely: `SmtpEmailSender`
+implements `IEmailSender`, creates a fresh `SmtpClient` per send (stateless →
+safe as a singleton), and throws on failure so the worker records
+`last_send_status = failed`.
+
+**Trade-off:** we give up provider-specific niceties (templating APIs,
+delivery/open webhooks, analytics) that the REST SDKs expose. If we later
+need those, that's the moment to reconsider — but they'd be added deliberately,
+not adopted by default. See `docs/architecture.md` for the send flow.
+
+---
+
+## Frontend is Angular
+
+**Decision:** The frontend (Phase 2) is built with **Angular** and its
+standard ecosystem (Angular CLI, RxJS, the Angular router/HttpClient, etc.).
+
+**Why:** A batteries-included, opinionated framework suits a forms-and-tables
+line-of-business app like this (document forms, list/history views, an auth
+flow) — routing, HTTP, forms, and DI come in the box rather than being
+assembled from separate libraries. Its strong TypeScript-first typing pairs
+well with generating a typed client from `docs/openapi.yaml` (which is why
+keeping that spec in sync with the code matters before frontend work). This
+is a Phase-2 commitment; nothing in the backend depends on it — the API is a
+plain JSON/JWT contract any frontend could consume.

@@ -58,13 +58,41 @@ code/infrastructure exists, and note where reality diverges from the plan.
   value re-derived from the raw `DocumentType` enum (source of the PDF title
   bug). See `docs/decisions-log.md`.
 
+## Email delivery (decided — see `docs/decisions-log.md`)
+
+The implementation side of `x-email-delivery-policy` (the contract side).
+
+- **Provider:** Brevo, over its **SMTP relay** (not the REST SDK).
+- **Library:** MailKit, behind our own `IEmailSender` port — so switching
+  provider is a credentials change, not a code change.
+- **Async mechanism:** in-process — an unbounded `Channel<EmailSendJob>`
+  (`EmailQueue`) written by the endpoint and drained by a single
+  `BackgroundService` (`EmailSendingWorker`). No external broker.
+
+Send flow:
+
+1. `POST /documents/{id}/send` → `SendDocumentHandler` resolves the recipient
+   (`to_email` → else the linked customer's **live** `email` → else `422`),
+   calls `document.MarkSendEnqueued()` (`send_count++`, `last_send_status =
+   queued`), saves, enqueues an `EmailSendJob`, and returns **202** at once.
+2. `EmailSendingWorker` reads the job in a **per-job DI scope**, loads the
+   document (+ line items), renders the PDF (`IPdfRenderer`), and invokes
+   `IEmailSender`.
+3. `SmtpEmailSender` (MailKit) opens a **fresh `SmtpClient` per send**
+   (stateless → safe singleton), STARTTLS-connects to Brevo, authenticates,
+   and sends the PDF as an attachment. Success → `document.MarkSent()`; any
+   exception → `document.MarkSendFailed(reason)`. The row is saved either way.
+
+- **Sender selection is by environment:** Development/Testing use a no-op
+  `LoggingEmailSender` (never sends); Staging/Production use `SmtpEmailSender`.
+- **Known limits (deferred):** the in-process Channel loses queued jobs if the
+  process crashes, and there's no retry/backoff on a transient SMTP failure.
+  Acceptable at this scale — upgrade to a durable outbox/broker + retry if
+  delivery guarantees ever matter.
+
 ## Not yet decided
 
-- Frontend framework/hosting.
-- Deployment/infrastructure — nothing here yet; `docs/infrastructure.md`
-  doesn't exist yet because there's nothing to document.
-- **Email provider and the async send mechanism** — 0.8.0 introduces the first
-  asynchronous work in the system (the send worker), but the provider (SES,
-  SendGrid, SMTP, …) and the queue/background-processing approach (hosted
-  service, Channel, a real broker, …) are undecided. Document them here and in
-  `docs/data-layer.md` once chosen.
+- **Frontend hosting/deployment** — the framework is **Angular** (decided, see
+  `docs/decisions-log.md`), but where/how it's hosted is open.
+- Deployment/infrastructure for the API — nothing here yet;
+  `docs/infrastructure.md` doesn't exist yet because there's nothing to document.
