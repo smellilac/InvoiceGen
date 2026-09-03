@@ -111,6 +111,10 @@ see `docs/decisions-log.md`. In EF Core, `Document` has an
 | `subtotal`, `discount_amount`, `tax_amount`, `total`, `amount_settled`, `balance_remaining` | `numeric(18,2)` | decimal money — never float. All computed + stored by `Document.Recalculate()`. `subtotal` is PRE-discount; `discount_amount` = subtotal − discounted; `tax_amount` = sum of per-line tax; totals computed discount-first, then per-line tax on the discounted amount (see `docs/decisions-log.md`). `discount_amount`/`tax_amount` are stored so a client can reconcile the response without the line items (which the response omits). `amount_settled`/`balance_remaining` mean paid/owed for most types, refunded/unrefunded for `credit_note` — see settlement policy |
 | `tax_percent`, `discount_percent`, `shipping_amount` | `numeric(18,2)` | inputs to the totals |
 | `notes` / `terms` | `text`, nullable | |
+| `last_sent_at` | `timestamptz`, nullable | set only on a **successful** email send (`POST /documents/{id}/send`); null if never sent |
+| `send_count` | `integer`, default 0 | count of send **attempts** (incl. retries), incremented at enqueue time |
+| `last_send_status` | `text`, nullable | `queued`/`sent`/`failed`; most-recent attempt only. Updated by the background worker |
+| `last_send_error` | `text`, nullable | short failure reason; present only when `last_send_status = failed` |
 | `created_at` / `updated_at` | `timestamptz` | list is ordered `created_at` DESC |
 
 ### `line_items`

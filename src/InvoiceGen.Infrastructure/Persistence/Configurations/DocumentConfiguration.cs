@@ -21,6 +21,8 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(x => x.Currency).IsRequired().HasMaxLength(10);
         builder.Property(x => x.Notes).HasMaxLength(2000);
         builder.Property(x => x.Terms).HasMaxLength(2000);
+        builder.Property(x => x.LastSendStatus).HasConversion<string>().HasMaxLength(20);
+        builder.Property(x => x.LastSendError).HasMaxLength(500);
 
         builder.Property(x => x.TaxPercent).HasPrecision(18, 2);
         builder.Property(x => x.DiscountPercent).HasPrecision(18, 2);

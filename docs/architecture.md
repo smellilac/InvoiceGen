@@ -9,6 +9,8 @@ code/infrastructure exists, and note where reality diverges from the plan.
 1. **Auth**: client obtains a JWT access/refresh pair via `/auth/login` or
    `/auth/register`, sends `Authorization: Bearer <access_token>` on every
    subsequent request, and refreshes via `/auth/refresh` before it expires.
+   The `/auth` group is protected by account lockout (5 fails → 5-min) and
+   per-IP rate limiting (20 req/min → `429`) — see `docs/decisions-log.md`.
 2. **Main page**: calls `GET /document-types` (public, no auth) to render
    the "what do you want to create?" picker.
 3. **Create document**: authenticated `POST /documents` with the filled-out
@@ -32,6 +34,13 @@ code/infrastructure exists, and note where reality diverges from the plan.
    **QuestPDF** and streams the bytes. Nothing is stored — the PDF is a fresh
    projection of the document's data on every request. Rendering is
    **synchronous** (inline in the request), no background job.
+7. **Send**: `POST /documents/{id}/send` emails the rendered PDF. Unlike
+   download, this is **asynchronous** — the endpoint validates, resolves the
+   recipient (live lookup: `to_email`, else the linked customer's current
+   `email`; none → **422**), enqueues the send, and returns **202 Accepted**.
+   A background worker performs the actual send and updates `last_sent_at` /
+   `last_send_status` / `last_send_error` on the `Document`; `send_count`
+   bumps at enqueue. Rate-limited like `/auth`. See `docs/decisions-log.md`.
 
 ## PDF rendering (decided — see `docs/decisions-log.md`)
 
@@ -54,3 +63,8 @@ code/infrastructure exists, and note where reality diverges from the plan.
 - Frontend framework/hosting.
 - Deployment/infrastructure — nothing here yet; `docs/infrastructure.md`
   doesn't exist yet because there's nothing to document.
+- **Email provider and the async send mechanism** — 0.8.0 introduces the first
+  asynchronous work in the system (the send worker), but the provider (SES,
+  SendGrid, SMTP, …) and the queue/background-processing approach (hosted
+  service, Channel, a real broker, …) are undecided. Document them here and in
+  `docs/data-layer.md` once chosen.

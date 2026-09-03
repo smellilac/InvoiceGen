@@ -41,7 +41,7 @@ if (rateLimitingEnabled)
 }
 
 builder.Services.AddInvoiceGenApplicationLayer();
-builder.Services.AddInvoiceGenInfrastructureLayer(builder.Configuration);
+builder.Services.AddInvoiceGenInfrastructureLayer(builder.Configuration, builder.Environment);
 builder.Services.AddJwtBearerAuthentication(builder.Configuration);
 
 var app = builder.Build();

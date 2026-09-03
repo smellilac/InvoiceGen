@@ -291,6 +291,64 @@ levels; add them only if an admin/multi-tier concept ever appears.
 
 ---
 
+## Brute-force protection: account lockout + per-IP rate limiting (0.7.0)
+
+**Decision (documented in 0.7.0, already implemented):** Two independent
+layers guard the credential endpoints:
+
+- **Account lockout** via ASP.NET Core Identity — 5 consecutive failed
+  password attempts locks *that account* for 5 minutes; even a correct
+  password is rejected while locked. New users get `LockoutEnabled = true`.
+- **Per-IP rate limiting** on the whole `/auth` group — a fixed window of 20
+  requests/minute/IP, exceeding it returns **429**. Applied to the group and
+  runs *before* authentication. Disabled in the automated test environment so
+  same-IP test calls aren't throttled.
+
+**Why both:** They cover different attacks. Lockout protects one account from
+password-guessing but does nothing against the *same* password sprayed across
+many accounts; per-IP rate limiting throttles a single origin regardless of
+which account it targets. Neither alone is sufficient.
+
+**Known limitation:** a locked account currently surfaces on `POST /auth/login`
+as **401** — the same status as bad credentials — so a client can't tell
+"locked" from "wrong password" from the status alone. A future `423 Locked`
+would separate them, but that's a code change, flagged as a known gap in
+`docs/api-contract.md`. See `x-security-policy`.
+
+---
+
+## Email delivery: async send, live recipient lookup, tracked outcome (0.8.0)
+
+**Decision (0.8.0):** `POST /documents/{documentId}/send` emails the rendered
+PDF. Email delivery was previously deferred; it's now in scope. Four sub-rules:
+
+- **Asynchronous.** The endpoint validates, resolves the recipient, enqueues
+  the send, and returns **202 Accepted** — it does *not* wait for the provider.
+  `send_count` increments immediately (it counts *attempts*, including
+  retries); `last_sent_at`/`last_send_status` are updated by the background
+  worker later. So right after the 202, those may still reflect a prior send —
+  clients needing current status re-fetch the document.
+- **Recipient is a LIVE lookup** — `to_email` in the body wins; otherwise the
+  linked customer's *current* `email` (not the frozen `to` snapshot). This is a
+  deliberate exception to the `x-customer-policy` snapshot rule: a stale email
+  would misdeliver or silently fail, which is worse than the exception. If none
+  resolves (no `customer_id`, customer has no `email`, or was soft-deleted) →
+  **422**.
+- **Outcome is visible, not swallowed.** `last_send_status`
+  (`queued`/`sent`/`failed`) + `last_send_error` (present only on failure) let
+  the frontend alert the user. `last_send_status` reflects only the most recent
+  attempt; `last_sent_at` updates only on actual success, so it always answers
+  "when did this last really reach the customer."
+- **Subject is auto-generated** from `DocumentTypeInfo.name` + `number` (e.g.
+  "Invoice INV-0042 from Acme Co.") — not customizable, reusing the canonical
+  label rule. The optional `message` is a free-text note in the body.
+
+**Why rate-limited:** it reuses the same per-IP limiter and `429` as `/auth` —
+it sends email to a third party on the caller's behalf, so it's abusable to
+spam an inbox and needs the same protection. See `x-email-delivery-policy`.
+
+---
+
 ## Line items are a child table, not a JSON column
 
 **Decision:** `Document.items` is persisted as a separate `line_items` table
