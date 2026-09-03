@@ -9,7 +9,9 @@ it, not the other way around.
 - **Auth** (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`,
   `/auth/me`) — JWT access + refresh token pair, not bare API keys. Chosen
   because this is a multi-user web app people log into, not a single-tenant
-  integration tool.
+  integration tool. Brute-force protection is two-layered: Identity account
+  lockout (5 fails → 5-min) + per-IP rate limiting on the whole `/auth` group
+  (20 req/min → `429`). See `x-security-policy` and the key decisions below.
 - **Document types** (`/document-types`) — public, unauthenticated. Lets the
   main page render its "what do you want to create?" choices without
   hardcoding the list client-side. The `DocumentType` set tracks
@@ -21,12 +23,20 @@ it, not the other way around.
   document can reference by `customer_id` instead of retyping the `to` field.
   Referencing a customer auto-fills `to` at creation time only — the document
   stores a **frozen snapshot**, never a live link (see key decisions below).
-- **Documents** (`/documents`, `/documents/{id}`, `/documents/{id}/pdf`) —
-  create, list (history), get, delete, download PDF. Creating a document
-  persists it first and returns JSON with a `pdf_url`, rather than streaming
-  the PDF directly back — this is a deliberate difference from
-  invoice-generator.com's API, made because documents belong to a logged-in
-  user's account and need to show up in their history.
+- **Documents** (`/documents`, `/documents/{id}`, `/documents/{id}/pdf`,
+  `/documents/{id}/send`) — create, list (history), get, delete, download PDF,
+  and email the PDF to a customer. Creating a document persists it first and
+  returns JSON with a `pdf_url`, rather than streaming the PDF directly back —
+  this is a deliberate difference from invoice-generator.com's API, made
+  because documents belong to a logged-in user's account and need to show up in
+  their history.
+- **Email delivery** (`POST /documents/{id}/send`, added 0.8.0) — emails the
+  rendered PDF. **Asynchronous**: validates, resolves the recipient, enqueues,
+  and returns **202 Accepted** (not a delivery confirmation). Recipient is a
+  live lookup (`to_email` wins, else the linked customer's current `email`;
+  none resolvable → 422). Rate-limited with the same `429` as `/auth`. Delivery
+  outcome is tracked on `Document` (`last_sent_at`, `send_count`,
+  `last_send_status`, `last_send_error`). See `x-email-delivery-policy`.
 
 ## Explicitly deferred (see `x-future-phases` in the YAML)
 
@@ -36,11 +46,10 @@ it, not the other way around.
   When revisited, decide first whether it means "record that a payment
   happened" (small) or "collect via a processor like Stripe" (much bigger —
   PCI scope, webhook signature verification, idempotency, refunds).
-- **Email delivery** — no "send this document to the customer" endpoint yet
-  (mirrors invoice-generator.com's "Save & Send" button, which is also not
-  replicated yet).
 - **UBL/e-invoice XML export** — invoice-generator.com has a `/ubl` endpoint
   for this; not replicated yet.
+
+(Email delivery moved into scope in 0.8.0 — see the Documents section above.)
 
 ## Key non-obvious decisions
 
@@ -77,6 +86,15 @@ just the "what," not the "why."
   new documents (`POST /documents` with its `customer_id` → **422**), but
   existing documents and `GET /documents?customer_id=...` filtering are
   unaffected.
+- Brute-force protection is two layers: Identity account lockout (per account)
+  + per-IP rate limiting on `/auth` (and `POST /documents/{id}/send`). A locked
+  account currently returns `401`, indistinguishable from bad credentials
+  (`x-security-policy`).
+- Email send is **async** — `POST /documents/{id}/send` returns `202`, not a
+  delivery confirmation; clients re-fetch the document for up-to-date
+  `last_send_status`. Recipient resolution is a **live** email lookup (a
+  deliberate exception to the `to` snapshot rule). Subject is auto-generated
+  from `DocumentTypeInfo.name` + `number` (`x-email-delivery-policy`).
 
 ## Known gaps / things to decide before this is "production ready"
 
@@ -90,3 +108,5 @@ Carried over from spec review, not yet resolved:
   two documents).
 - No `failed` status on `Document` — if PDF rendering errors, there's
   currently no way to represent that.
+- A locked account returns `401`, indistinguishable from bad credentials — a
+  future `423 Locked` (a code change) would separate them (`x-security-policy`).

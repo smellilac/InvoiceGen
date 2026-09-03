@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.7.0"
+  version: "0.8.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -20,8 +20,8 @@ info:
 
     Explicitly OUT of scope for this version (left for a later phase — see the
     x-future-phases block at the bottom of this file): payment collection/
-    webhooks, and emailing documents directly to customers. (Customers, as of
-    0.3.0, is no longer deferred — see below.)
+    webhooks. (Customers, as of 0.3.0, and emailing documents to customers, as
+    of 0.8.0, are no longer deferred — see below.)
 
     Changelog:
       0.2.0 — Resolved three open design questions from the spec review:
@@ -96,6 +96,20 @@ info:
           future `423 Locked` would separate them — a code change).
         No request/response shapes changed; this is documentation catching
         up to the implementation.
+      0.8.0 — Added Email delivery (was previously deferred; see
+        `x-future-phases` for the remaining deferred items):
+        - Added `POST /documents/{documentId}/send`, which emails the
+          rendered PDF to a customer. See `x-email-delivery-policy` for the
+          full design (recipient resolution, async behavior, and how a
+          delivery failure is surfaced).
+        - Added `SendDocumentRequest` (`to_email`, `message`, both optional).
+        - Added five fields to `Document`: `last_sent_at`, `send_count`,
+          `last_send_status`, `last_send_error`. See `x-email-delivery-policy`
+          for what each one means and when it updates.
+        - `POST /documents/{documentId}/send` reuses the existing `429 Too
+          Many Requests` response, so it can be rate-limited the same way
+          `/auth` is, since it's another endpoint that could be abused to
+          spam a third party's inbox.
 
 security:
   - BearerAuth: []
@@ -261,6 +275,55 @@ x-security-policy:
     brute-force/spray attempts from a single origin regardless of which
     account is targeted. (Disabled in the automated test environment so the
     suite's same-IP calls aren't throttled.)
+
+x-email-delivery-policy:
+  recipient_resolution: >-
+    `POST /documents/{documentId}/send` needs a recipient email address,
+    which — unlike `to` (a frozen free-text name/address blob) — must be a
+    real, structured email address. Resolution order: if the request body's
+    `to_email` is given, it always wins. Otherwise, if the document has a
+    `customer_id`, the linked Customer's current `email` is used (this is a
+    LIVE lookup at send time, not the frozen `to` snapshot — see
+    `x-customer-policy` — because an out-of-date email address would mean
+    the send silently fails or goes to the wrong inbox, which is worse than
+    a documented exception to the snapshot rule). If neither produces an
+    email address (no `customer_id`, or the linked customer has no `email`
+    on file, or that customer was soft-deleted), the request is rejected
+    with `422`.
+  asynchronous_delivery: >-
+    Sending is asynchronous: the endpoint validates the request, resolves
+    the recipient, enqueues the send, and returns `202 Accepted` — it does
+    NOT wait for the email provider to confirm delivery. `send_count` on
+    `Document` increments immediately (it counts attempts, including
+    retries after a failure), but `last_sent_at` and `last_send_status` are
+    updated by the background worker once it actually attempts the send —
+    so immediately after the `202` response, those fields may still reflect
+    a previous send (or be unset, on a first send). Clients that need to
+    show up-to-date status should re-fetch the document (e.g. `GET
+    /documents/{id}`) rather than trust the `202` response body alone.
+  status_and_failure_visibility: >-
+    `last_send_status` (`queued` / `sent` / `failed`) and `last_send_error`
+    (a short human-readable reason, present only when `last_send_status` is
+    `failed`) together let the frontend show the user an alert when a send
+    didn't go through — e.g. "Failed to send: Recipient address rejected" —
+    rather than the failure being silently swallowed server-side.
+    `last_send_status` reflects only the MOST RECENT attempt; retrying a
+    failed send (calling the endpoint again) overwrites it once that new
+    attempt resolves. `last_sent_at` only updates on an actual successful
+    delivery, so it always answers "when did this last actually reach the
+    customer," independent of how the most recent attempt went.
+  subject_and_message: >-
+    The email subject is always auto-generated from `DocumentTypeInfo.name`
+    and the document's `number` (e.g. "Invoice INV-0042 from Acme Co.") —
+    not customizable, so it stays consistent — reusing the same canonical
+    naming rule as PDF titles (see `DocumentTypeInfo.name`). The request's
+    optional `message` field is included in the email body as a free-text
+    note from the sender; if omitted, a generic default body is used.
+  rate_limiting: >-
+    Reuses the same per-IP rate limiting and `429 Too Many Requests`
+    response as `/auth` (see `x-security-policy.rate_limiting`) — this
+    endpoint sends email to a third party on the caller's behalf, so it
+    needs the same abuse protection.
 
 servers:
   - url: https://api.example.com/v1
@@ -690,6 +753,49 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /documents/{documentId}/send:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    post:
+      operationId: sendDocument
+      tags: [documents]
+      summary: Email the rendered PDF to a customer
+      description: >-
+        Enqueues an email of this document's PDF to a recipient. Asynchronous
+        — see `x-email-delivery-policy` for recipient resolution, why this
+        returns `202` instead of `200`, and how `last_send_status` /
+        `last_send_error` on `Document` let the frontend surface a failure.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendDocumentRequest'
+      responses:
+        '202':
+          description: >-
+            Send enqueued. Does not mean delivery succeeded — see
+            `x-email-delivery-policy.asynchronous_delivery`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: >-
+            No email address could be resolved (no `to_email`, and either no
+            `customer_id` or the linked customer has no `email` on file) —
+            or `to_email`, when given, is not a valid email address. See
+            `x-email-delivery-policy.recipient_resolution`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1021,6 +1127,27 @@ components:
             (`credit_note`) against this document. See `x-settlement-policy`
             for the full, type-dependent explanation.
 
+    SendDocumentRequest:
+      type: object
+      description: >-
+        Both fields optional — an empty body is valid whenever the document
+        has a `customer_id` with a saved email. See
+        `x-email-delivery-policy.recipient_resolution`.
+      properties:
+        to_email:
+          type: string
+          format: email
+          description: >-
+            Overrides the linked Customer's saved email, if any. Required
+            when the document has no `customer_id`, or that customer has no
+            `email` on file.
+        message:
+          type: string
+          description: >-
+            Optional free-text note included in the email body. The subject
+            line is always auto-generated and not customizable — see
+            `x-email-delivery-policy.subject_and_message`.
+
     Document:
       type: object
       properties:
@@ -1061,6 +1188,35 @@ components:
           type: string
           format: uri
           description: "Same as GET /documents/{id}/pdf — provided here for convenience."
+        last_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When this document was last SUCCESSFULLY emailed via
+            POST /documents/{id}/send. Null if it's never been sent. Only
+            updates on success — see x-email-delivery-policy.
+        send_count:
+          type: integer
+          default: 0
+          description: >-
+            How many times a send has been attempted (including retries
+            after a failure) — not just successful sends. See
+            x-email-delivery-policy.
+        last_send_status:
+          type: string
+          nullable: true
+          enum: [queued, sent, failed]
+          description: >-
+            Outcome of the MOST RECENT send attempt. Null if never sent.
+            See x-email-delivery-policy.status_and_failure_visibility for
+            how the frontend should use this to alert the user on failure.
+        last_send_error:
+          type: string
+          nullable: true
+          description: >-
+            Short human-readable reason the most recent send failed. Only
+            present when last_send_status is "failed"; null otherwise.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -1086,10 +1242,6 @@ x-future-phases:
       payment happened" (small) or "collect payments via a processor like
       Stripe" (much bigger — PCI scope, webhook signature verification,
       idempotency, refunds).
-  - name: Email delivery
-    description: >-
-      POST /documents/{id}/send — email the PDF directly to the customer,
-      mirroring the "Save & Send" button on invoice-generator.com.
   - name: UBL / e-invoice export
     description: >-
       GET /documents/{id}/ubl — structured XML export, mirroring

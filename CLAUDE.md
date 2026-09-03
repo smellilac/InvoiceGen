@@ -23,6 +23,9 @@ implementation choices land; don't let them go stale once code exists.
 - ORM: EF Core
 - PDF: **QuestPDF** — rendered **on demand**, never stored (`pdf_url` points at
   the download endpoint); synchronous. See `docs/decisions-log.md`.
+- Email delivery: `POST /documents/{id}/send` emails the rendered PDF —
+  **asynchronous** (enqueue + `202 Accepted`, a background worker does the
+  actual send). Provider not yet chosen. See `docs/decisions-log.md`.
 - Frontend: **not yet decided**
 
 ## Solution structure
@@ -36,7 +39,7 @@ src/
     Features/
       Auth/                       — Login, Register, Refresh, Logout
       Customers/                  — Create, List, Get, Update, Delete (soft)
-      Documents/                  — Create, List, Get, GetPdf
+      Documents/                  — Create, List, Get, GetPdf, Send
       DocumentTypes/              — List
     Common/                       — Shared abstractions, base types
   InvoiceGen.Infrastructure/      — EF Core, PostgreSQL, PDF renderer
@@ -74,6 +77,11 @@ Do not introduce custom Result or discriminated-union wrappers.
 - **Authorization:** `.RequireAuthorization()` + a `user_id` claim + an
   ownership filter (`WHERE user_id = caller`) in handlers. Non-owner → **404**,
   not 403. No roles, no policies unless a privilege tier actually appears.
+- **Brute-force protection (two layers):** Identity **account lockout** (5
+  failed logins → 5-min lockout, per account) + **per-IP rate limiting** on the
+  whole `/auth` group (fixed window, 20 req/min/IP → **429**). A locked account
+  currently surfaces as `401` (indistinguishable from bad credentials); a future
+  `423 Locked` would separate them. Rate limiting is disabled in the test env.
 - **JWT signing key:** via `dotnet user-secrets` in dev, env vars/secret store
   in prod. Never commit it to `appsettings.json`.
 - Layering: entities in Domain, auth handlers + token interface in Application,
@@ -121,6 +129,12 @@ each one.
   `to` text on documents already created. Deleting a customer is a **soft
   delete** (`deleted_at`), never a row removal — historical documents keep
   their `to` text and `customer_id`. See `docs/decisions-log.md`.
+- **Email send is async and resolves the recipient at send time.** `POST
+  /documents/{id}/send` enqueues and returns **202** — it does *not* confirm
+  delivery. The recipient email is a **live lookup** (`to_email` wins, else the
+  linked customer's *current* `email`) — a deliberate exception to the `to`
+  snapshot rule, because a stale email misdelivers. No email resolvable → 422.
+  See `docs/decisions-log.md`.
 
 ## Where to look
 
@@ -137,8 +151,9 @@ each one.
 
 Deferred to a later phase (not yet documented in detail — see
 `x-future-phases` in `docs/openapi.yaml`): payments/webhooks (explicitly
-scoped down to "not needed yet" as of 0.3.0, not designed), email delivery,
-UBL/e-invoice export. (Customers is no longer deferred — it landed in 0.3.0.)
+scoped down to "not needed yet" as of 0.3.0, not designed) and UBL/e-invoice
+export. (Customers landed in 0.3.0 and email delivery in 0.8.0 — both no
+longer deferred.)
 `infrastructure.md`, `observability.md`, and `service-boundaries.md` aren't
 created yet either — add them when there's actually infrastructure or more
 than one service to document.

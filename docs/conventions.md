@@ -72,6 +72,26 @@ don't let individual controllers invent their own error shapes.
 - `/auth/logout` must actually revoke the refresh token server-side (not
   just tell the client to discard it) — a refresh token that still works
   after logout is a real bug, not a minor detail.
+- Brute-force protection is two layers: Identity account lockout (5 fails →
+  5-min, per account) + per-IP rate limiting on the `/auth` group (20
+  req/min → `429`). Keep the limiter on the whole group, before auth, and
+  disabled in the test env. A locked account currently returns `401` (a
+  future `423` would distinguish it). See `docs/decisions-log.md`.
+
+## Email delivery
+
+- `POST /documents/{id}/send` is **asynchronous** — enqueue and return `202`,
+  never block on the provider. Don't treat `202` as "delivered."
+- `send_count` counts attempts (bump at enqueue); `last_sent_at` updates only
+  on a real success; `last_send_status`/`last_send_error` reflect the most
+  recent attempt and must surface a failure to the client, not swallow it.
+- Recipient resolution is a **live** lookup (`to_email` wins, else the linked
+  customer's current `email`) — a deliberate exception to the `to` snapshot
+  rule; none resolvable → `422`.
+- The email subject is auto-generated from `DocumentTypeInfo.name` + `number`
+  (same canonical-label rule as PDF titles) — don't hand-build it per call.
+- Rate-limit it with the same `429` limiter as `/auth` — it emails a third
+  party on the caller's behalf.
 
 ## General
 
