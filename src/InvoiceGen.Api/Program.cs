@@ -5,10 +5,11 @@ using InvoiceGen.Api.Common;
 using InvoiceGen.Application.Common;
 using InvoiceGen.Infrastructure;
 using Microsoft.AspNetCore.RateLimiting;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
+builder.Services.AddInvoiceGenOpenApi();
 builder.Services.AddProblemDetails();
 
 // Match the OpenAPI contract's snake_case field names (access_token, business_name, ...)
@@ -47,9 +48,18 @@ builder.Services.AddJwtBearerAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
+// API docs are development-only — the OpenAPI document exposes internal structure and the
+// Scalar "Try It" panel would let anyone exercise the API. Gate both behind auth if ever
+// exposed in another environment.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(options =>
+    {
+        options
+            .WithTitle("InvoiceGen API")
+            .AddPreferredSecuritySchemes("Bearer");
+    });
 }
 
 app.UseExceptionHandler();
