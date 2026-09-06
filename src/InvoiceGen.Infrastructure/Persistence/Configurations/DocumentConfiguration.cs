@@ -44,6 +44,12 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
             .HasForeignKey(x => x.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Soft delete: a global filter hides deleted rows from every query automatically, so
+        // list, get, pdf, and send all exclude them without extra code (same as customers).
+        builder.HasQueryFilter(d => d.DeletedAt == null);
+
+        builder.Ignore(x => x.IsDeleted);
+
         // GET /documents filters by user_id (+ optional type) and orders by created_at desc.
         builder.HasIndex(x => new { x.UserId, x.CreatedAt });
         // Backs GET /documents?customer_id=... — composite so one index covers the filter

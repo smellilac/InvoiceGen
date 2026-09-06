@@ -197,7 +197,7 @@ public class DocumentsTests(TestWebAppFactory factory) : IClassFixture<TestWebAp
     }
 
     [Fact]
-    public async Task Delete_RemovesDocument()
+    public async Task Delete_SoftDeletes_HidesFromGetListAndPdf()
     {
         var client = await AuthedClientAsync("doc-delete@test.com");
         var created = await client.PostAsJsonAsync("/documents", Doc(new[] { Item("A", 1, 10m) }));
@@ -207,8 +207,17 @@ public class DocumentsTests(TestWebAppFactory factory) : IClassFixture<TestWebAp
         var delete = await client.DeleteAsync($"/documents/{id}");
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
 
+        // Soft-deleted: hidden from get, list, and pdf — response shapes unchanged.
         var get = await client.GetAsync($"/documents/{id}");
         Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
+
+        var list = await client.GetAsync("/documents");
+        var body = JsonDocument.Parse(await list.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(0, body.GetProperty("total").GetInt32());
+        Assert.Equal(0, body.GetProperty("data").GetArrayLength());
+
+        var pdf = await client.GetAsync($"/documents/{id}/pdf");
+        Assert.Equal(HttpStatusCode.NotFound, pdf.StatusCode);
     }
 
     [Fact]
