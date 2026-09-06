@@ -10,6 +10,7 @@ public sealed class SendDocumentHandler(IAppDbContext db, IEmailQueue queue, Tim
         Guid userId, Guid documentId, SendDocumentRequest request, CancellationToken cancellationToken)
     {
         var document = await db.Documents
+            .Include(d => d.Items)
             .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == userId, cancellationToken);
         if (document is null)
             return Error.NotFound("document_not_found", "Document not found.");

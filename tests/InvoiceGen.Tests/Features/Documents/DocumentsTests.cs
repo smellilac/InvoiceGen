@@ -115,6 +115,74 @@ public class DocumentsTests(TestWebAppFactory factory) : IClassFixture<TestWebAp
     }
 
     [Fact]
+    public async Task Get_RoundTripsCreateInputs()
+    {
+        var client = await AuthedClientAsync("doc-roundtrip@test.com");
+
+        var request = new
+        {
+            type = "invoice",
+            to = "Client Co",
+            number = "INV-0042",
+            related_document_number = "INV-0041",
+            date = "2026-01-15",
+            due_date = "2026-02-15",
+            currency = "USD",
+            items = new[]
+            {
+                new { name = "Design", description = "Logo work", quantity = 2m, unit_cost = 50m, reference = "REF-1" }
+            },
+            tax_percent = 10m,
+            discount_percent = 5m,
+            shipping_amount = 12.50m,
+            notes = "Thanks!",
+            terms = "Net 30",
+            amount_settled = 20m
+        };
+
+        var created = await client.PostAsJsonAsync("/documents", request);
+        created.EnsureSuccessStatusCode();
+        var id = JsonDocument.Parse(await created.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("id").GetString();
+
+        var body = JsonDocument.Parse(await (await client.GetAsync($"/documents/{id}")).Content.ReadAsStringAsync())
+            .RootElement;
+
+        // Inputs echoed back verbatim, reusing CreateDocumentRequest's names/shapes.
+        Assert.Equal("2026-01-15", body.GetProperty("date").GetString());
+        Assert.Equal("2026-02-15", body.GetProperty("due_date").GetString());
+        Assert.Equal(10m, body.GetProperty("tax_percent").GetDecimal());
+        Assert.Equal(5m, body.GetProperty("discount_percent").GetDecimal());
+        Assert.Equal(12.50m, body.GetProperty("shipping_amount").GetDecimal());
+        Assert.Equal("Thanks!", body.GetProperty("notes").GetString());
+        Assert.Equal("Net 30", body.GetProperty("terms").GetString());
+
+        var item = body.GetProperty("items")[0];
+        Assert.Equal("Design", item.GetProperty("name").GetString());
+        Assert.Equal("Logo work", item.GetProperty("description").GetString());
+        Assert.Equal(2m, item.GetProperty("quantity").GetDecimal());
+        Assert.Equal(50m, item.GetProperty("unit_cost").GetDecimal());
+        Assert.Equal("REF-1", item.GetProperty("reference").GetString());
+
+        // Computed totals still present alongside the inputs that produced them.
+        Assert.Equal(100m, body.GetProperty("subtotal").GetDecimal());
+        Assert.True(body.TryGetProperty("tax_amount", out _));
+        Assert.True(body.TryGetProperty("discount_amount", out _));
+    }
+
+    [Fact]
+    public async Task List_IncludesLineItems()
+    {
+        var client = await AuthedClientAsync("doc-list-items@test.com");
+        await client.PostAsJsonAsync("/documents", Doc(new[] { Item("Widget", 3, 9.99m) }));
+
+        var body = JsonDocument.Parse(await (await client.GetAsync("/documents")).Content.ReadAsStringAsync())
+            .RootElement;
+
+        Assert.Equal("Widget", body.GetProperty("data")[0].GetProperty("items")[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task Get_OtherUsersDocument_Returns404()
     {
         var owner = await AuthedClientAsync("doc-owner@test.com");
