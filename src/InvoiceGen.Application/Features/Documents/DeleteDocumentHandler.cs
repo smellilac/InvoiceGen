@@ -4,8 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceGen.Application.Features.Documents;
 
-public sealed class DeleteDocumentHandler(IAppDbContext db)
+public sealed class DeleteDocumentHandler(IAppDbContext db, TimeProvider clock)
 {
+    // Soft delete: stamp DeletedAt so the row stays for history, but the global query filter
+    // hides it from list/get/pdf/send. Same convention as DeleteCustomerHandler.
     public async Task<ErrorOr<Success>> HandleAsync(
         Guid userId, Guid documentId, CancellationToken cancellationToken)
     {
@@ -15,7 +17,7 @@ public sealed class DeleteDocumentHandler(IAppDbContext db)
         if (document is null)
             return Error.NotFound("document_not_found", "Document not found.");
 
-        db.Documents.Remove(document);
+        document.DeletedAt = clock.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
 
         return Result.Success;

@@ -50,6 +50,11 @@ public class Document
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    // SOFT delete (same policy as Customer.DeletedAt): a deleted document is hidden from
+    // list/get/pdf/send via a global query filter, but the row is kept for history.
+    public DateTimeOffset? DeletedAt { get; set; }
+
+    public bool IsDeleted => DeletedAt is not null;
 
     public List<LineItem> Items { get; set; } = [];
 

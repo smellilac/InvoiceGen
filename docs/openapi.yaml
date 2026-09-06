@@ -739,7 +739,11 @@ paths:
     delete:
       operationId: deleteDocument
       tags: [documents]
-      summary: Remove a document from history
+      summary: Soft-delete a document
+      description: >-
+        Sets `deleted_at`; does not remove the row. The document stops
+        appearing in `GET /documents`, `GET /documents/{id}`, and the PDF/send
+        endpoints (all return 404 afterward). The response shape is unchanged.
       responses:
         '204':
           description: Deleted
