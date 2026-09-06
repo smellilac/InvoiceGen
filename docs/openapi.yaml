@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.8.0"
+  version: "0.9.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -110,6 +110,19 @@ info:
           Many Requests` response, so it can be rate-limited the same way
           `/auth` is, since it's another endpoint that could be abused to
           spam a third party's inbox.
+      0.9.0 — Made `Document` round-trip what `CreateDocumentRequest`
+        accepts, so a GET (and the create/list/send responses, which share
+        the schema) returns enough to prefill the create form. Purely
+        additive to the response shape — `CreateDocumentRequest` is
+        unchanged. Added to `Document`:
+        - The submitted inputs, reusing `CreateDocumentRequest`'s exact
+          field names/shapes: `date`, `due_date`, `items` (array of
+          `LineItem`), `tax_percent`, `discount_percent`, `shipping_amount`,
+          `notes`, and `terms`.
+        - `discount_amount` and `tax_amount`, the computed totals produced
+          by `discount_percent`/`tax_percent`. (These were already returned
+          by the implementation but had never been documented on the
+          schema; documenting them here alongside their inputs.)
 
 security:
   - BearerAuth: []
@@ -1174,8 +1187,36 @@ components:
           nullable: true
           description: 'Reference to the Customer this was created from, if any. Kept even after that customer is soft-deleted (see x-customer-policy) — does not imply `to` reflects the customer''s current info.'
         currency: { type: string }
+        date:
+          type: string
+          format: date
+          description: 'Echoes back CreateDocumentRequest.date exactly as submitted, so a GET round-trips into the create form.'
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          description: 'Echoes back CreateDocumentRequest.due_date (null if omitted / not applicable to the type).'
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/LineItem' }
+          description: 'The line items exactly as submitted on CreateDocumentRequest.items — same shape, so a GET round-trips into the create form.'
         subtotal:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+        discount_percent:
+          type: number
+          description: 'Echoes back CreateDocumentRequest.discount_percent — the input rate that produced discount_amount (0 if none). See x-rounding-policy.'
+        discount_amount:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          description: 'Computed total discount applied (subtotal minus the discounted subtotal). Driven by discount_percent — see x-rounding-policy.'
+        tax_percent:
+          type: number
+          description: 'Echoes back CreateDocumentRequest.tax_percent — the input rate that produced tax_amount (0 if none). See x-rounding-policy.'
+        tax_amount:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          description: 'Computed total tax (sum of per-line-item tax). Driven by tax_percent — see x-rounding-policy.'
+        shipping_amount:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          description: 'Echoes back CreateDocumentRequest.shipping_amount — the flat shipping input added into total (0 if none).'
         total:
           allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
         amount_settled:
@@ -1217,6 +1258,14 @@ components:
           description: >-
             Short human-readable reason the most recent send failed. Only
             present when last_send_status is "failed"; null otherwise.
+        notes:
+          type: string
+          nullable: true
+          description: 'Echoes back CreateDocumentRequest.notes exactly as submitted (null if omitted).'
+        terms:
+          type: string
+          nullable: true
+          description: 'Echoes back CreateDocumentRequest.terms exactly as submitted (null if omitted).'
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 

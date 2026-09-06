@@ -14,7 +14,7 @@ public sealed class ListDocumentsHandler(IAppDbContext db)
         if (perPage < 1) perPage = 20;          // invalid/zero → default
         else if (perPage > 30) perPage = 30;    // too high → clamp to max
 
-        var query = db.Documents.AsNoTracking().Where(d => d.UserId == userId);
+        var query = db.Documents.AsNoTracking().Include(d => d.Items).Where(d => d.UserId == userId);
         if (type is not null)
             query = query.Where(d => d.Type == type);
         if (customerId is not null)
