@@ -4,6 +4,7 @@ using InvoiceGen.Application.Features.Documents;
 using InvoiceGen.Domain.Entities;
 using InvoiceGen.Infrastructure.Auth;
 using InvoiceGen.Infrastructure.Email;
+using InvoiceGen.Infrastructure.Imaging;
 using InvoiceGen.Infrastructure.Pdf;
 using InvoiceGen.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -44,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IRefreshTokenService, RefreshTokenService>();
         services.AddSingleton<IPdfRenderer, PdfRenderer>();
+        services.AddSingleton<IImageProcessor, ImageSharpImageProcessor>();
 
         // Email delivery: in-process queue + background worker.
         services.AddSingleton<EmailQueue>();
@@ -53,7 +55,7 @@ public static class DependencyInjection
         // Sender is chosen by environment: Development and Testing use the logging placeholder
         // (never send a real email); everything else (Staging/Production) uses the real SMTP
         // relay (e.g. Brevo). SMTP settings must be configured in those environments.
-        if (environment.IsDevelopment() || environment.IsEnvironment("Testing"))
+        if (environment.IsEnvironment("Testing"))
         {
             services.AddSingleton<IEmailSender, LoggingEmailSender>();
         }

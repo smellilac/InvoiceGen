@@ -11,6 +11,7 @@ public interface IAppDbContext
     DbSet<Document> Documents { get; }
     DbSet<LineItem> LineItems { get; }
     DbSet<Customer> Customers { get; }
+    DbSet<UserLogo> UserLogos { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

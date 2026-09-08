@@ -1,39 +1,41 @@
-# Handoff — fix/get-document-id-contract (Document response round-trip)
+# Handoff — feature/soft-delete (Document soft-delete)
 
 ## Completed
-- [x] **`DocumentDto` now round-trips `CreateDocumentRequest` inputs** so a GET
-      returns enough to prefill the create form. Added, reusing POST's exact
-      names/shapes: `Date`, `DueDate`, `Items` (as `IReadOnlyList<CreateLineItemRequest>`),
-      `TaxPercent`, `DiscountPercent`, `ShippingAmount`, `Notes`, `Terms`.
-      `CreateDocumentRequest` itself is untouched (additive to the response only).
-- [x] **Loaded line items where the shared DTO needed them** — added
-      `.Include(d => d.Items)` to `GetDocumentHandler`, `ListDocumentsHandler`,
-      `SendDocumentHandler` (Create already had items in memory). Without this
-      those responses would have returned an empty `items` array.
-- [x] **OpenAPI `Document` schema updated to match** (`docs/openapi.yaml`):
-      added the 8 input fields + documented `discount_amount`/`tax_amount`
-      (already returned by the impl, never previously in the spec). Version
-      bumped `0.8.0 → 0.9.0` with a changelog entry.
-- [x] **Tests green** — added `Get_RoundTripsCreateInputs` and
-      `List_IncludesLineItems`. DocumentsTests 13/13, EmailSendTests 7/7 pass
-      (built + run via isolated `-o` dir to dodge the WSL bin lock).
+- [x] **Soft-delete for documents** — `DELETE /documents/{id}` now stamps
+      `deleted_at` instead of removing the row, matching the customer convention.
+  - `Document` entity: added `DeletedAt` + `IsDeleted` (mirrors `Customer`).
+  - `DeleteDocumentHandler`: stamps `DeletedAt` via injected `TimeProvider`
+    instead of `db.Documents.Remove(...)`.
+  - `DocumentConfiguration`: global query filter
+    `HasQueryFilter(d => d.DeletedAt == null)` + `Ignore(IsDeleted)` — auto-excludes
+    soft-deleted docs from get / list / pdf / send (no per-handler changes needed).
+  - Migration `20260906120000_AddDocumentSoftDelete` (+ Designer + snapshot):
+    adds nullable `DeletedAt` column to `documents`.
+  - Test renamed → `Delete_SoftDeletes_HidesFromGetListAndPdf`; asserts exclusion
+    from get (404), list (total 0), and pdf (404).
+  - `docs/openapi.yaml`: DELETE summary/description updated to soft-delete wording.
+    **Wire contract unchanged** (204, same GET/list shapes, `DeletedAt` never in any DTO).
+- [x] **Full suite green: 55/55** (Testcontainers Postgres; migration exercised
+      via `MigrateAsync`). Built/tested via isolated `-o` dir to dodge the WSL bin lock.
 
 ## Pending / next steps
-- [ ] **Regenerate the frontend's API types against `docs/openapi.yaml` (0.9.0).**
-      BLOCKED: no frontend in this repo (backend-only: `src`/`docs`/`tests`, no
-      codegen tooling). Need the Angular repo path, or Dima regenerates it there.
-      The Document-schema diff was surfaced to Dima for the frontend spec copy.
-- [ ] (separate thread) PDF restyle in `src/InvoiceGen.Infrastructure/Pdf/PdfRenderer.cs`
-      is still modified/uncommitted — not part of this change; see git stash/diff.
-- [ ] (separate thread) CRLF-only churn in `docs/apicontract.md` + `docs/conventions.md`
-      left unstaged on purpose (`git diff --ignore-all-space` = empty).
+- [ ] Feature is complete. Optional: open PR to `master`.
+- [ ] Pre-existing unrelated uncommitted changes left unstaged ON PURPOSE
+      (present before this task, separate threads — see prior handoff):
+      `src/InvoiceGen.Infrastructure/Pdf/PdfRenderer.cs` (PDF restyle),
+      `docs/apicontract.md` + `docs/conventions.md` (CRLF-only churn,
+      `git diff --ignore-all-space` = empty).
 
 ## Learned / gotchas
-- **`DocumentDto` is shared by Get/List/Create/Send** — enriching it changes all
-  four responses at once, and any handler not `.Include`-ing `Items` would emit
-  an empty `items` array. Kept a single `Document` schema in OpenAPI to match.
-- **In-place `dotnet build`/`test` fails with MSB3021 "Access to the path ...
-  denied"** (WSL bin lock on /mnt/c). Build/test to an isolated `-o <dir>`.
+- **`dotnet ef migrations add` fails with MSB3021** when `InvoiceGen.Api.exe` is
+  running on Windows (it locks `src/*/bin` DLLs; `rm` gives I/O error). Workaround
+  used: hand-authored the migration `.cs` + `.Designer.cs` + updated
+  `AppDbContextModelSnapshot.cs` to match EF's output, then validated via the test
+  suite (which runs migrations). Alternative: stop the running app first.
+- **Query filters are NOT emitted into migrations/snapshots** — only the schema
+  column delta appears; the filter lives in `DocumentConfiguration`.
+- Build/test to an isolated `-o <dir>` to avoid the WSL bin lock while the app runs.
 
 ## Context
-- Branch: fix/get-document-id-contract | Checkpoint: <this commit>
+- Branch: feature/soft-delete | Checkpoint: 438a648
+- Base: master | Prev commit: 3bf9542
