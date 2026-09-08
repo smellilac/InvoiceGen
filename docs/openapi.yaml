@@ -513,6 +513,94 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /auth/me/logo:
+    post:
+      operationId: uploadUserLogo
+      tags: [auth]
+      summary: Upload a business logo from the user's device
+      description: |
+        Stores the image server-side (Postgres) and sets the user's `logo_url` to a
+        short, browser-loadable retrieval URL (`GET /auth/logo/{logoId}`), returning the
+        updated profile so the frontend can drop it straight into its auth state.
+
+        The server is the authority on the image: it sniffs the actual bytes (the declared
+        content type is not trusted), rejects anything it can't decode as a raster image
+        (PNG/JPEG/WebP/GIF; SVG is rejected), rejects uploads over 5 MB, and downscales +
+        re-encodes to a bounded PNG. Each upload gets a fresh `logoId`, so the retrieval
+        URL changes and browser/PDF caches can't mask a re-upload.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The image file (max 5 MB; PNG/JPEG/WebP/GIF).
+      responses:
+        '200':
+          description: Logo stored; returns the updated profile with the new `logo_url`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: >-
+            No file, an unreadable/non-image file, or a file over 5 MB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      operationId: deleteUserLogo
+      tags: [auth]
+      summary: Clear the user's uploaded logo
+      description: >-
+        Removes the stored image and nulls `logo_url`, returning the updated profile.
+        (Setting `logo_url` to `""` via `PATCH /auth/me` also clears the URL, but only this
+        endpoint removes the stored bytes.)
+      responses:
+        '200':
+          description: Logo cleared; returns the updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/logo/{logoId}:
+    parameters:
+      - name: logoId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getUserLogo
+      tags: [auth]
+      summary: Fetch a stored logo image by its opaque id
+      description: >-
+        Public and unauthenticated — an `<img>` tag (and the PDF renderer) can't send a
+        bearer token, so access control is the unguessable, non-enumerable `logoId` rather
+        than the user id. Not covered by the `/auth` rate limiter.
+      security: []
+      responses:
+        '200':
+          description: The logo image bytes.
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+        '404':
+          description: No logo exists with that id.
+
   # ------------------------------------------------------- DOCUMENT TYPES ----
   /document-types:
     get:
@@ -707,7 +795,7 @@ paths:
           schema: { type: integer, minimum: 1, default: 1 }
         - name: per_page
           in: query
-          schema: { type: integer, minimum: 1, maximum: 30, default: 20 }
+          schema: { type: integer, minimum: 1, maximum: 30, default: 10 }
       responses:
         '200':
           description: Paginated list of documents

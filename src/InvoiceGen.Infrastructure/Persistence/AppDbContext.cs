@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<LineItem> LineItems => Set<LineItem>();
     public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<UserLogo> UserLogos => Set<UserLogo>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

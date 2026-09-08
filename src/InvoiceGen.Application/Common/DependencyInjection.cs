@@ -32,6 +32,9 @@ public static class DependencyInjection
         services.AddScoped<LogoutHandler>();
         services.AddScoped<GetMeHandler>();
         services.AddScoped<UpdateMeHandler>();
+        services.AddScoped<UploadLogoHandler>();
+        services.AddScoped<DeleteLogoHandler>();
+        services.AddScoped<GetLogoHandler>();
     }
 
     private static void AddDocumentsHandlers(this IServiceCollection services)

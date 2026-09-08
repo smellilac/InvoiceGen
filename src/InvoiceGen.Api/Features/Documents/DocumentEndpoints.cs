@@ -66,7 +66,7 @@ public static class DocumentEndpoints
                 typeFilter = parsed;
             }
 
-            var result = await handler.HandleAsync(userId.Value, typeFilter, customer_id, page ?? 1, per_page ?? 20, ct);
+            var result = await handler.HandleAsync(userId.Value, typeFilter, customer_id, page ?? 1, per_page ?? 10, ct);
             return result.IsError
                 ? await result.ToProblemDetails(pds, http)
                 : Results.Ok(result.Value);
