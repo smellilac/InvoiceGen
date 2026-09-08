@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.9.0"
+  version: "0.10.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -123,6 +123,24 @@ info:
           by `discount_percent`/`tax_percent`. (These were already returned
           by the implementation but had never been documented on the
           schema; documenting them here alongside their inputs.)
+      0.10.0 — Added a per-document business logo, stamped onto the PDF header:
+        - Added `include_logo` (boolean, default `true`) to
+          `CreateDocumentRequest`. When true and the user has a profile
+          `logo_url` set (via `POST /auth/me/logo`), that URL is copied onto the
+          new document at creation time; set it to `false` to create a
+          document with no logo even when the profile has one.
+        - Added `logo_url` (nullable string) to `Document`. This is a FROZEN
+          SNAPSHOT captured at creation, NOT a live reference to the user's
+          profile — exactly the same reasoning as the `to`
+          name/address snapshot in `x-customer-policy`: a document is a
+          point-in-time record, so re-branding, changing, or removing the
+          profile logo later must not silently rewrite the logo on documents
+          already issued. The PDF renderer reads this field, never the
+          current profile. `null` means the document was created without a
+          logo (opted out, or no profile logo was set at the time).
+        - The rendered logo is capped to a modest header box so it can never
+          crowd out or obscure the legally required fields (seller info,
+          document number, dates, tax breakdown, totals).
 
 security:
   - BearerAuth: []
@@ -1231,6 +1249,18 @@ components:
             Money already paid (most types) or already refunded
             (`credit_note`) against this document. See `x-settlement-policy`
             for the full, type-dependent explanation.
+        include_logo:
+          type: boolean
+          default: true
+          description: >-
+            Whether to stamp the user's current profile logo (`logo_url`, set
+            via `POST /auth/me/logo`) onto this document. When true (the default)
+            and a profile logo exists, that URL is captured onto the
+            document's `logo_url` AT CREATION TIME as a frozen snapshot — it
+            is never re-read from the profile afterwards (same freeze rule as
+            `to`; see `x-customer-policy`). Set to false to create a document
+            with no logo even when the profile has one. If the profile has no
+            logo, this has no effect and `logo_url` is null either way.
 
     SendDocumentRequest:
       type: object
@@ -1273,6 +1303,20 @@ components:
           description: 'Exactly what the user submitted (or null if left blank) — see CreateDocumentRequest.related_document_number for the full policy. Never generated, validated, or altered by the API.'
         from: { type: string }
         to: { type: string }
+        logo_url:
+          type: string
+          format: uri
+          nullable: true
+          description: >-
+            The business logo stamped onto this document's PDF header. A
+            FROZEN snapshot of the user's profile `logo_url` captured when the
+            document was created (only if `include_logo` was true and a
+            profile logo was set) — NOT a live reference to the current
+            profile. Editing or removing the profile logo later never changes
+            this value, for the same point-in-time-record reason as `to` (see
+            `x-customer-policy`). Null if the document was created with no logo
+            (opted out via `include_logo: false`, or no profile logo existed
+            at creation time).
         customer_id:
           type: string
           format: uuid

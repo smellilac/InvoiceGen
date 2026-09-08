@@ -20,6 +20,13 @@ public class Document
     public string To { get; set; } = null!;
     public string Currency { get; set; } = "USD";
 
+    // A FROZEN snapshot of the user's profile logo URL, captured at creation (same policy as
+    // `To`/`From`: not a live link to the profile). Copied from AppUser.LogoUrl when the create
+    // request opts in (include_logo) and a profile logo is set; otherwise null. The PDF renderer
+    // reads THIS field, never the current profile — editing/removing the profile logo later never
+    // rewrites it. See openapi x-customer-policy.
+    public string? LogoUrl { get; set; }
+
     public DateOnly Date { get; set; }
     public DateOnly? DueDate { get; set; }
 

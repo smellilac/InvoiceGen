@@ -16,7 +16,10 @@ public sealed class GetDocumentPdfHandler(IAppDbContext db, IPdfRenderer rendere
         if (document is null)
             return Error.NotFound("document_not_found", "Document not found.");
 
-        var content = renderer.Render(document);
+        // Resolve the document's FROZEN logo URL (not the live profile) back to image bytes.
+        var logo = await DocumentLogoResolver.ResolveAsync(db, document, cancellationToken);
+
+        var content = renderer.Render(document, logo);
         var label = string.IsNullOrWhiteSpace(document.Number) ? document.Id.ToString() : document.Number;
         return new PdfFile(content, $"{DocumentTypeApi.ToApi(document.Type)}-{label}.pdf");
     }

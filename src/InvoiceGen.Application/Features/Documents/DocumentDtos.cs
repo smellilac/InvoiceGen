@@ -26,7 +26,11 @@ public sealed record CreateDocumentRequest(
     decimal ShippingAmount,
     string? Notes,
     string? Terms,
-    decimal AmountSettled);
+    decimal AmountSettled,
+    // Opt out of stamping the user's profile logo onto this document. Null/omitted = true
+    // (include it). When true and the profile has a logo, its URL is frozen onto the document
+    // at creation (see Document.LogoUrl); after that it never tracks the profile.
+    bool? IncludeLogo = true);
 
 // Matches the OpenAPI `Document` schema. Echoes back every input the caller
 // submitted on CreateDocumentRequest (line items, dates, the tax/discount/shipping
@@ -43,6 +47,9 @@ public sealed record DocumentDto(
     Guid? CustomerId,
     string From,
     string To,
+    // Frozen at creation from the user's profile logo (null if opted out or none set). Never a
+    // live view of the current profile — see Document.LogoUrl.
+    string? LogoUrl,
     string Currency,
     DateOnly Date,
     DateOnly? DueDate,
@@ -67,7 +74,7 @@ public sealed record DocumentDto(
     DateTimeOffset UpdatedAt)
 {
     public static DocumentDto FromEntity(Document d) => new(
-        d.Id, d.Type, d.Status, d.Number, d.RelatedDocumentNumber, d.CustomerId, d.From, d.To, d.Currency,
+        d.Id, d.Type, d.Status, d.Number, d.RelatedDocumentNumber, d.CustomerId, d.From, d.To, d.LogoUrl, d.Currency,
         d.Date, d.DueDate,
         d.Items.Select(i => new CreateLineItemRequest(i.Name, i.Description, i.Quantity, i.UnitCost, i.Reference)).ToList(),
         d.Subtotal, d.DiscountPercent, d.DiscountAmount, d.TaxPercent, d.TaxAmount, d.ShippingAmount, d.Total,
