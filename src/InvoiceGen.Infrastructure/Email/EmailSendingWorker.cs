@@ -47,7 +47,9 @@ public sealed class EmailSendingWorker(
 
         try
         {
-            var pdf = renderer.Render(document);
+            // Stamp the same frozen logo the on-demand PDF endpoint uses (see Document.LogoUrl).
+            var logo = await DocumentLogoResolver.ResolveAsync(db, document, cancellationToken);
+            var pdf = renderer.Render(document, logo);
             var body = string.IsNullOrWhiteSpace(job.Message)
                 ? $"Please find your {DocumentTypeApi.ToDisplayName(document.Type).ToLowerInvariant()} attached."
                 : job.Message!;

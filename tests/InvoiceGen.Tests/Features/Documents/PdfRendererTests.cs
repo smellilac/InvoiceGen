@@ -10,7 +10,11 @@ namespace InvoiceGen.Tests.Features.Documents;
 // the packing-slip "no pricing" and credit-note "Refunded" rules were code-only, untested.
 public class PdfRendererTests
 {
-    private static byte[] Render(DocumentType type)
+    // A minimal valid 1x1 PNG, enough for QuestPDF (ImageSharp) to decode and embed.
+    private static readonly byte[] TinyPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC");
+
+    private static byte[] Render(DocumentType type, byte[]? logo = null)
     {
         var document = new Document
         {
@@ -22,7 +26,7 @@ public class PdfRendererTests
             Items = [new LineItem { Name = "PackWidget", Quantity = 2m, UnitCost = 77.77m }]
         };
         document.Recalculate();
-        return new PdfRenderer().Render(document);
+        return new PdfRenderer().Render(document, logo);
     }
 
     // Whitespace-stripped text, so assertions don't depend on PDF glyph spacing.
@@ -64,5 +68,20 @@ public class PdfRendererTests
         Assert.Contains("77.77", text);             // priced document
         Assert.Contains("Paid", text);
         Assert.DoesNotContain("Refunded", text);
+    }
+
+    [Fact]
+    public void Logo_WhenProvided_RendersWithoutDisplacingRequiredFields()
+    {
+        var pdf = Render(DocumentType.Invoice, TinyPng);
+        var text = FlatText(pdf);
+
+        Assert.NotEmpty(pdf);
+        // The logo is an embedded image (not text), so it can't obscure these — the required
+        // header/totals fields must all still be present alongside it.
+        Assert.Contains("Invoice", text);
+        Assert.Contains("2026-01-15", text);
+        Assert.Contains("Subtotal", text);
+        Assert.Contains("77.77", text);
     }
 }

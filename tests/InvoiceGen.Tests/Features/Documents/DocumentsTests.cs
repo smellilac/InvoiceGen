@@ -266,4 +266,63 @@ public class DocumentsTests(TestWebAppFactory factory) : IClassFixture<TestWebAp
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    // A valid 1x1 PNG — the smallest real image the logo endpoint will accept.
+    private static readonly byte[] TinyPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+
+    private static async Task<string> UploadLogoAsync(HttpClient client)
+    {
+        var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(TinyPng);
+        file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(file, "file", "logo.png");
+        var response = await client.PostAsync("/auth/me/logo", content);
+        response.EnsureSuccessStatusCode();
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("logo_url").GetString()!;
+    }
+
+    [Fact]
+    public async Task Create_SnapshotsProfileLogo_AndStaysFrozenAfterProfileLogoRemoved()
+    {
+        var client = await AuthedClientAsync("doc-logo-freeze@test.com");
+        var logoUrl = await UploadLogoAsync(client);
+
+        // include_logo defaults to true, so the document snapshots the current profile logo.
+        var created = await client.PostAsJsonAsync("/documents", Doc(new[] { Item("A", 1, 10m) }));
+        created.EnsureSuccessStatusCode();
+        var createdBody = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement;
+        var id = createdBody.GetProperty("id").GetString();
+        Assert.Equal(logoUrl, createdBody.GetProperty("logo_url").GetString());
+
+        // Remove the profile logo entirely — the document's frozen logo_url must not change.
+        (await client.DeleteAsync("/auth/me/logo")).EnsureSuccessStatusCode();
+
+        var fetched = await client.GetAsync($"/documents/{id}");
+        fetched.EnsureSuccessStatusCode();
+        var fetchedBody = JsonDocument.Parse(await fetched.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(logoUrl, fetchedBody.GetProperty("logo_url").GetString());
+    }
+
+    [Fact]
+    public async Task Create_WithIncludeLogoFalse_LeavesLogoNull_EvenWithProfileLogo()
+    {
+        var client = await AuthedClientAsync("doc-logo-optout@test.com");
+        await UploadLogoAsync(client);
+
+        var response = await client.PostAsJsonAsync("/documents", new
+        {
+            type = "invoice",
+            to = "Client Co",
+            date = "2026-01-15",
+            currency = "USD",
+            items = new[] { Item("A", 1, 10m) },
+            include_logo = false,
+        });
+        response.EnsureSuccessStatusCode();
+
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("logo_url").ValueKind);
+    }
 }

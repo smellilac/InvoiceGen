@@ -19,6 +19,8 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(x => x.From).IsRequired().HasMaxLength(1000);
         builder.Property(x => x.To).IsRequired().HasMaxLength(1000);
         builder.Property(x => x.Currency).IsRequired().HasMaxLength(10);
+        // Frozen snapshot of the profile logo URL — same 2048 cap as AppUser.LogoUrl.
+        builder.Property(x => x.LogoUrl).HasMaxLength(2048);
         builder.Property(x => x.Notes).HasMaxLength(2000);
         builder.Property(x => x.Terms).HasMaxLength(2000);
         builder.Property(x => x.LastSendStatus).HasConversion<string>().HasMaxLength(20);

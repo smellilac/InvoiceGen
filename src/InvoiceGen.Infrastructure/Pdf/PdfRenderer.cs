@@ -26,9 +26,16 @@ public sealed class PdfRenderer : IPdfRenderer
 
     static PdfRenderer() => QuestPDF.Settings.License = LicenseType.Community;
 
-    public byte[] Render(DomainDocument document) => Compose(document).GeneratePdf();
+    // Cap the logo to a modest band so it can never crowd out or obscure the legally required
+    // header fields (seller info, document number, dates) or the totals below. A tall/large logo
+    // is scaled down to fit this box; it is never allowed to dominate the page.
+    private const float LogoMaxHeight = 56f;
+    private const float LogoMaxWidth = 200f;
 
-    private static IDocument Compose(DomainDocument document)
+    public byte[] Render(DomainDocument document, byte[]? logo = null) =>
+        Compose(document, logo).GeneratePdf();
+
+    private static IDocument Compose(DomainDocument document, byte[]? logo)
     {
         // A packing slip is a shipping document — by convention it never shows prices
         // or totals (it can travel to someone who isn't paying). Same layout otherwise.
@@ -50,6 +57,14 @@ public sealed class PdfRenderer : IPdfRenderer
 
                 page.Header().Column(header =>
                 {
+                    // Frozen per-document logo (see Document.LogoUrl). Sits above the title band in
+                    // its own capped box, so it adds branding without displacing the seller/number/
+                    // date fields that must stay visible.
+                    if (logo is { Length: > 0 })
+                        header.Item().PaddingBottom(8).AlignLeft()
+                            .MaxHeight(LogoMaxHeight).MaxWidth(LogoMaxWidth)
+                            .Image(logo).FitArea();
+
                     header.Item().Row(row =>
                     {
                         row.RelativeItem().Column(col =>

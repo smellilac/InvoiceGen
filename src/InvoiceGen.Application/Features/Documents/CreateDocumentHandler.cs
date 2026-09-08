@@ -18,12 +18,18 @@ public sealed class CreateDocumentHandler(
         // Request-shape validation (items, to, per-item rules) runs in the endpoint's
         // ValidationFilter<CreateDocumentRequest> before this handler is called.
 
-        // `from` may be omitted — fall back to the user's saved business profile.
-        // This stays here (not in the validator) because it needs the user record.
+        // include_logo defaults to true when omitted (see CreateDocumentRequest.IncludeLogo).
+        var includeLogo = request.IncludeLogo ?? true;
+
+        // The user record backs two creation-time snapshots: the `from` fallback and the logo.
+        // Load it once if either needs it (both need the profile), not on every create.
         var from = request.From;
+        AppUser? user = null;
+        if (string.IsNullOrWhiteSpace(from) || includeLogo)
+            user = await userManager.FindByIdAsync(userId.ToString());
+
         if (string.IsNullOrWhiteSpace(from))
         {
-            var user = await userManager.FindByIdAsync(userId.ToString());
             from = string.Join("\n", new[] { user?.BusinessName, user?.BusinessAddress }
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
         }
@@ -52,7 +58,11 @@ public sealed class CreateDocumentHandler(
         if (string.IsNullOrWhiteSpace(to))
             return Error.Validation("to_required", "'to' is required, or reference a customer.");
 
-        var document = BuildDocument(userId, request, from, to, clock.GetUtcNow());
+        // Freeze the profile logo URL onto the document now (a snapshot, like `to`/`from`) —
+        // only when opted in and a logo is actually set. Never re-read from the profile after.
+        var logoUrl = includeLogo && !string.IsNullOrWhiteSpace(user?.LogoUrl) ? user!.LogoUrl : null;
+
+        var document = BuildDocument(userId, request, from, to, logoUrl, clock.GetUtcNow());
         document.Recalculate();
 
         db.Documents.Add(document);
@@ -62,7 +72,7 @@ public sealed class CreateDocumentHandler(
     }
 
     private static Document BuildDocument(
-        Guid userId, CreateDocumentRequest request, string from, string to, DateTimeOffset now) => new()
+        Guid userId, CreateDocumentRequest request, string from, string to, string? logoUrl, DateTimeOffset now) => new()
     {
         Id = Guid.NewGuid(),
         UserId = userId,
@@ -73,6 +83,7 @@ public sealed class CreateDocumentHandler(
         RelatedDocumentNumber = request.RelatedDocumentNumber,
         From = from,
         To = to,
+        LogoUrl = logoUrl,
         Currency = string.IsNullOrWhiteSpace(request.Currency) ? "USD" : request.Currency,
         Date = request.Date,
         DueDate = request.DueDate,
