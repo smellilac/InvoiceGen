@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.11.0"
+  version: "0.12.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -158,6 +158,20 @@ info:
           `amount` field. Direction ("paid" vs "refunded for `credit_note`") is
           governed by `x-settlement-policy`; the arithmetic and bound are the
           same either way.
+      0.12.0 — Added self-service account deletion:
+        - Added `DELETE /auth/me`, which permanently deletes the caller's own
+          account immediately, with no grace period and no undo. See the new
+          `x-account-policy` for the full behavior.
+        - Soft-deletes (existing `DeletedAt` convention) the user row and all
+          of that user's documents and customers, revokes every one of the
+          user's refresh tokens (all sessions end at once, not just the
+          caller's), and blocks future logins: `POST /auth/login` fails for a
+          deleted account exactly like bad credentials (401), never leaking
+          that the account was deleted — same rationale as account lockout in
+          `x-security-policy`.
+        - A deleted user's email address is released for reuse: the same
+          address can be registered again via `POST /auth/register`. No
+          request/response shapes changed on other endpoints.
 
 security:
   - BearerAuth: []
@@ -324,6 +338,42 @@ x-security-policy:
     account is targeted. (Disabled in the automated test environment so the
     suite's same-IP calls aren't throttled.)
 
+x-account-policy:
+  self_service_deletion: >-
+    `DELETE /auth/me` lets a logged-in user permanently delete their OWN
+    account. It happens immediately — there is no grace period, no soft
+    "deactivate then purge later," and no undo endpoint. Returns `204 No
+    Content`.
+  what_gets_soft_deleted: >-
+    Deletion reuses the existing `DeletedAt` soft-delete convention (see
+    `x-customer-policy`) rather than physically removing rows: the user row,
+    every document owned by the user, and every customer owned by the user
+    are stamped deleted. Rows are kept (they stay out of all normal queries
+    via the same global filter that hides a soft-deleted document/customer),
+    but the account is unusable from that moment on. Because documents are
+    hidden by that filter, any email send already queued for one of them
+    becomes a no-op when the background worker reloads it — so deletion can't
+    be "undone" by an in-flight job acting on stale state.
+  sessions_revoked_everywhere: >-
+    All of the user's refresh tokens are revoked, not just the one on the
+    deleting request — every active session is logged out at once. Access
+    tokens are short-lived and stateless (see AuthResponse `expires_in`), so
+    an already-issued access token keeps working until it expires on its own
+    (~minutes); it cannot be used to obtain a new one because refresh is
+    revoked.
+  login_blocked_indistinguishably: >-
+    After deletion, `POST /auth/login` fails for that account exactly like a
+    wrong password — a `401` with no hint that the account was deleted. This
+    is the same non-leaking rationale as account lockout in
+    `x-security-policy.account_lockout`.
+  email_freed_for_reuse: >-
+    The email address of a deleted account is released and becomes available
+    again for `POST /auth/register` — the person deliberately left, so they
+    (or anyone) may sign up fresh with that address later. The uniqueness
+    check on registration therefore does NOT treat a deleted account's email
+    as still taken; a brand-new, unrelated account is created (it inherits
+    none of the deleted account's data).
+
 x-email-delivery-policy:
   recipient_resolution: >-
     `POST /documents/{documentId}/send` needs a recipient email address,
@@ -441,7 +491,9 @@ paths:
           description: >-
             Incorrect email or password, OR the account is temporarily locked
             after too many failed attempts (see x-security-policy.account_lockout —
-            a lock currently surfaces as 401, indistinguishable from bad credentials).
+            a lock currently surfaces as 401, indistinguishable from bad credentials),
+            OR the account was deleted via DELETE /auth/me (also indistinguishable —
+            see x-account-policy.login_blocked_indistinguishably).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -545,6 +597,24 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      operationId: deleteCurrentUser
+      tags: [auth]
+      summary: Permanently delete the logged-in user's account
+      description: |
+        Permanently and immediately deletes the caller's own account — no grace
+        period, no undo. Soft-deletes the user, their documents, and their
+        customers; revokes ALL of the user's refresh tokens (every session is
+        logged out, not just this one); blocks future logins (a deleted account
+        fails `POST /auth/login` exactly like bad credentials); and releases the
+        email address for reuse via `POST /auth/register`. See `x-account-policy`.
+      responses:
+        '204':
+          description: Account deleted. All sessions are revoked; the email is free to reuse.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/TooManyRequests'
 

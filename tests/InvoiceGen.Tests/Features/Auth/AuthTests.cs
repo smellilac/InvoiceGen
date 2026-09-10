@@ -141,6 +141,72 @@ public class AuthTests(TestWebAppFactory factory) : IClassFixture<TestWebAppFact
     }
 
     [Fact]
+    public async Task DeleteMe_WithoutToken_ReturnsUnauthorized()
+    {
+        var response = await _client.DeleteAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteMe_RevokesEveryActiveSession_NotJustTheCaller()
+    {
+        var reg = await RegisterAsync("delete-sessions@test.com");
+        var accessToken = reg.GetProperty("access_token").GetString();
+        var firstSessionRefresh = reg.GetProperty("refresh_token").GetString();
+
+        // a SECOND independent session for the same account
+        var secondLogin = await _client.PostAsJsonAsync("/auth/login",
+            new { email = "delete-sessions@test.com", password = "P@ssw0rd123" });
+        secondLogin.EnsureSuccessStatusCode();
+        var secondSessionRefresh = JsonDocument.Parse(await secondLogin.Content.ReadAsStringAsync())
+            .RootElement.GetProperty("refresh_token").GetString();
+
+        using var delete = new HttpRequestMessage(HttpMethod.Delete, "/auth/me");
+        delete.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        var deleteResponse = await _client.SendAsync(delete);
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        // BOTH sessions are dead, not only the one that made the delete request
+        var firstRefresh = await _client.PostAsJsonAsync("/auth/refresh", new { refresh_token = firstSessionRefresh });
+        var secondRefresh = await _client.PostAsJsonAsync("/auth/refresh", new { refresh_token = secondSessionRefresh });
+        Assert.Equal(HttpStatusCode.Unauthorized, firstRefresh.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, secondRefresh.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteMe_ThenLogin_ReturnsUnauthorizedLikeBadCredentials()
+    {
+        var reg = await RegisterAsync("delete-login@test.com");
+        var accessToken = reg.GetProperty("access_token").GetString();
+
+        using var delete = new HttpRequestMessage(HttpMethod.Delete, "/auth/me");
+        delete.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        await _client.SendAsync(delete);
+
+        // the (correct) password no longer works — a deleted account is indistinguishable
+        // from a non-existent one
+        var login = await _client.PostAsJsonAsync("/auth/login",
+            new { email = "delete-login@test.com", password = "P@ssw0rd123" });
+        Assert.Equal(HttpStatusCode.Unauthorized, login.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteMe_FreesEmailForReRegistration()
+    {
+        var reg = await RegisterAsync("delete-reuse@test.com");
+        var accessToken = reg.GetProperty("access_token").GetString();
+
+        using var delete = new HttpRequestMessage(HttpMethod.Delete, "/auth/me");
+        delete.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        await _client.SendAsync(delete);
+
+        // the same address is available again — the person deliberately left
+        var reRegister = await _client.PostAsJsonAsync("/auth/register", NewRegistration("delete-reuse@test.com"));
+        Assert.Equal(HttpStatusCode.Created, reRegister.StatusCode);
+    }
+
+    [Fact]
     public async Task Logout_ThenRefresh_ReturnsUnauthorized()
     {
         var reg = await RegisterAsync("logout@test.com");

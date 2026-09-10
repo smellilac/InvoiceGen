@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<LogoutHandler>();
         services.AddScoped<GetMeHandler>();
         services.AddScoped<UpdateMeHandler>();
+        services.AddScoped<DeleteAccountHandler>();
         services.AddScoped<UploadLogoHandler>();
         services.AddScoped<DeleteLogoHandler>();
         services.AddScoped<GetLogoHandler>();

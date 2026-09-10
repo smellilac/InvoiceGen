@@ -12,4 +12,8 @@ public interface IRefreshTokenService
 
     // Revoke a raw refresh token (logout). Idempotent — unknown/already-revoked tokens are a no-op.
     Task RevokeAsync(string rawToken, CancellationToken cancellationToken);
+
+    // Revoke EVERY active refresh token for a user — logs out all sessions at once, not just
+    // the caller's (used by account deletion). Idempotent; already-revoked tokens are left as-is.
+    Task RevokeAllForUserAsync(Guid userId, CancellationToken cancellationToken);
 }
