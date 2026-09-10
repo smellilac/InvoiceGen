@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<DeleteDocumentHandler>();
         services.AddScoped<GetDocumentPdfHandler>();
         services.AddScoped<SendDocumentHandler>();
+        services.AddScoped<RecordSettlementHandler>();
 
         services.AddScoped<IValidator<CreateDocumentRequest>, CreateDocumentRequestValidator>();
         services.AddScoped<IValidator<SendDocumentRequest>, SendDocumentRequestValidator>();
