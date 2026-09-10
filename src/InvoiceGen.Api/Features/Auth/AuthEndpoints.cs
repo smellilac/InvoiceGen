@@ -19,6 +19,7 @@ public static class AuthEndpoints
         MapLogout(group);
         MapGetMe(group);
         MapUpdateMe(group);
+        MapDeleteMe(group);
         MapUploadLogo(group);
         MapDeleteLogo(group);
 
@@ -146,6 +147,28 @@ public static class AuthEndpoints
         })
         .WithName("UpdateCurrentUser")
         .WithSummary("Update the logged-in user's profile")
+        .RequireAuthorization();
+    }
+
+    private static void MapDeleteMe(RouteGroupBuilder group)
+    {
+        group.MapDelete("/me", async (
+            ClaimsPrincipal principal,
+            DeleteAccountHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.NoContent();
+        })
+        .WithName("DeleteCurrentUser")
+        .WithSummary("Permanently delete the logged-in user's account (irreversible)")
         .RequireAuthorization();
     }
 

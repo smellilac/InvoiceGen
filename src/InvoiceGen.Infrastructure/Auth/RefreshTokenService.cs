@@ -59,6 +59,16 @@ public sealed class RefreshTokenService(
         }
     }
 
+    public async Task RevokeAllForUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var now = clock.GetUtcNow();
+        // Bulk UPDATE straight to the DB — no need to load the rows. Every currently-active
+        // token is stamped revoked in one statement, so all sessions end immediately.
+        await db.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+    }
+
     private static string Hash(string raw)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
 }

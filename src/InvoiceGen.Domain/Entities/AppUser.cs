@@ -17,4 +17,13 @@ public class AppUser : IdentityUser<Guid>
     public Guid? LogoId { get; set; }
     public string? DefaultCurrency { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+
+    // SOFT delete (same DeletedAt convention as Customer/Document). Set by DELETE /auth/me,
+    // which also tombstones Email/UserName so the address frees up for re-registration.
+    // A user with DeletedAt set is treated as gone: login is refused exactly like bad
+    // credentials (see LoginHandler) and every refresh token is revoked. Irreversible —
+    // there is no un-delete path.
+    public DateTimeOffset? DeletedAt { get; set; }
+
+    public bool IsDeleted => DeletedAt is not null;
 }
