@@ -16,6 +16,7 @@ public static class DocumentEndpoints
         MapDelete(group);
         MapGetPdf(group);
         MapSend(group);
+        MapRecordSettlement(group);
     }
 
     private static void MapCreate(RouteGroupBuilder group)
@@ -166,5 +167,30 @@ public static class DocumentEndpoints
         .RequireRateLimiting("auth") // same per-IP limiter as /auth (x-email-delivery-policy)
         .WithName("SendDocument")
         .WithSummary("Email the document's PDF to a customer (async — returns 202)");
+    }
+
+    private static void MapRecordSettlement(RouteGroupBuilder group)
+    {
+        // Distinct sub-resource, not a general PATCH on /documents/{id} (which deliberately
+        // has none). Adds `amount` (may be negative) to amount_settled, clamped to [0, total].
+        group.MapPost("/{documentId:guid}/settlement", async (
+            Guid documentId,
+            RecordSettlementRequest request,
+            ClaimsPrincipal principal,
+            RecordSettlementHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var userId = principal.GetUserId();
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId.Value, documentId, request, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.Ok(result.Value);
+        })
+        .WithName("RecordSettlement")
+        .WithSummary("Record a payment or refund against a document (adjusts amount_settled)");
     }
 }

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.10.0"
+  version: "0.11.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -141,6 +141,23 @@ info:
         - The rendered logo is capped to a modest header box so it can never
           crowd out or obscure the legally required fields (seller info,
           document number, dates, tax breakdown, totals).
+      0.11.0 — Added recording a settlement against a document — the small,
+        "record that a payment happened" half of the deferred Payments item in
+        `x-future-phases`, explicitly NOT the processor/Stripe integration (no
+        webhooks, no PCI scope, no external money movement — that half stays
+        deferred):
+        - Added `POST /documents/{documentId}/settlement`, which adjusts a
+          document's `amount_settled` by a single signed `amount` and returns
+          the updated `Document`. A distinct sub-resource, not a general
+          `PATCH /documents/{id}` (there deliberately isn't one).
+        - Added `RecordSettlementRequest` (`amount`, decimal). Positive records
+          a payment/refund received; negative corrects an earlier mistaken
+          entry (there's no separate payment history — this is the one way to
+          fix a mistake). `new_amount_settled = amount_settled + amount` must
+          land within `[0, total]`, else `422` with the error mapped to the
+          `amount` field. Direction ("paid" vs "refunded for `credit_note`") is
+          governed by `x-settlement-policy`; the arithmetic and bound are the
+          same either way.
 
 security:
   - BearerAuth: []
@@ -919,6 +936,59 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /documents/{documentId}/settlement:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    post:
+      operationId: recordSettlement
+      tags: [documents]
+      summary: Record a settlement (payment or refund) against a document
+      description: >-
+        Adjusts the document's `amount_settled` by a single signed `amount` and
+        returns the updated `Document`. This is the "record that a payment
+        happened" capability — NOT a payment-processor integration (no external
+        money movement, no webhooks; see `x-future-phases`).
+
+
+        The new value is `amount_settled + amount`, and it must stay within
+        `[0, total]` (`balance_remaining` is recomputed as `total -
+        amount_settled`). `amount` may be negative to correct a previous
+        mistaken entry, since no separate payment history is kept — this is the
+        one way to fix a mistake. A result below 0 or above `total` is rejected
+        with `422`.
+
+
+        What `amount_settled` *means* depends on `type` (see
+        `x-settlement-policy`): for money-owed-to-you types it is money paid
+        toward `total`; for `credit_note` it is how much of the credit has been
+        refunded. The endpoint's arithmetic and the `[0, total]` bound are
+        identical either way.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordSettlementRequest'
+      responses:
+        '200':
+          description: Settlement recorded; the updated document is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: >-
+            The resulting `amount_settled` would fall outside `[0, total]`
+            (either below 0, or above the document's `total`). The error is
+            reported against the `amount` field.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1283,6 +1353,26 @@ components:
             line is always auto-generated and not customizable — see
             `x-email-delivery-policy.subject_and_message`.
 
+    RecordSettlementRequest:
+      type: object
+      required: [amount]
+      description: >-
+        A single signed change to the document's `amount_settled`. Positive
+        records a payment/refund received; negative corrects a previous mistaken
+        entry (no separate payment history is kept — this is the one way to fix a
+        mistake). The resulting `amount_settled + amount` must land within
+        `[0, total]`. See `x-settlement-policy` for what "settled" means per
+        `type`.
+      properties:
+        amount:
+          allOf:
+            - $ref: '#/components/schemas/MonetaryAmount'
+          description: >-
+            Signed delta applied to `amount_settled` (may be negative). The
+            resulting settled amount must stay within `[0, total]`, else `422`
+            on the `amount` field.
+          example: 100.00
+
     Document:
       type: object
       properties:
@@ -1418,15 +1508,17 @@ components:
 x-future-phases:
   - name: Payments & webhooks
     description: >-
-      Endpoints to record payments against a document, plus a webhook
-      subscription mechanism so external systems are notified on payment
-      or status change. Explicitly scoped down (not designed) as of 0.3.0 —
-      there's no near-term need to collect money through this system, so
-      building this now would be speculative. Revisit once there's an
-      actual use case, and decide then whether it means "record that a
-      payment happened" (small) or "collect payments via a processor like
-      Stripe" (much bigger — PCI scope, webhook signature verification,
-      idempotency, refunds).
+      The "record that a payment happened" half of this item shipped in
+      0.11.0 as `POST /documents/{documentId}/settlement` (adjusts
+      `amount_settled`; see `x-settlement-policy`) — that was the small,
+      in-scope reading called out below. What REMAINS deferred is the big
+      half: collecting payments via a processor like Stripe (PCI scope,
+      webhook signature verification, idempotency, processor-driven refunds)
+      plus a webhook subscription mechanism so external systems are notified
+      on payment or status change. Explicitly scoped down (not designed) as
+      of 0.3.0 — there's no near-term need to actually collect money through
+      this system, so building it now would be speculative. Revisit once
+      there's an actual use case.
   - name: UBL / e-invoice export
     description: >-
       GET /documents/{id}/ubl — structured XML export, mirroring

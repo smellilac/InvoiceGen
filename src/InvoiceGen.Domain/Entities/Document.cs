@@ -96,6 +96,18 @@ public class Document
 
     private static decimal Round(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 
+    // Record a settlement by SETTING the new absolute amount settled. The caller computes
+    // the new value (current + delta) and is responsible for validating it stays within
+    // [0, Total] — this just applies it and recomputes BalanceRemaining off the stored Total,
+    // leaving the line-item-driven totals untouched. What "settled" means depends on Type
+    // (x-settlement-policy): paid-toward-total for money-owed types, refunded for credit_note.
+    public void SetAmountSettled(decimal amountSettled, DateTimeOffset now)
+    {
+        AmountSettled = amountSettled;
+        BalanceRemaining = Round(Total - amountSettled);
+        UpdatedAt = now;
+    }
+
     // --- Email send state transitions (x-email-delivery-policy) ---
 
     // At enqueue: count the attempt and mark queued. LastSentAt is NOT touched here.

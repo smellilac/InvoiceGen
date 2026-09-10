@@ -12,6 +12,20 @@ public static class ResultExtensions
     {
         var error = result.FirstError;
 
+        // A field-level validation error (handler-side, where the rule needs data the
+        // ValidationFilter can't see) carries the offending field in its metadata. Surface it
+        // under the `errors` map so the response matches the ValidationFilter / OpenAPI
+        // ValidationErrorResponse.fields shape rather than a bare title/detail.
+        if (error.Type == ErrorType.Validation &&
+            error.Metadata is { } metadata &&
+            metadata.TryGetValue("field", out var fieldValue) &&
+            fieldValue is string field)
+        {
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]> { [field] = [error.Description] },
+                statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+
         var statusCode = error.Type switch
         {
             ErrorType.NotFound     => StatusCodes.Status404NotFound,
