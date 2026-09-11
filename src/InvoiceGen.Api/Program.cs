@@ -20,10 +20,13 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower));
 });
 
-// Per-IP throttle for the auth endpoints (login/register/refresh brute-force protection).
+// Per-IP throttle for the auth endpoints (login/register/refresh brute-force protection) and the
+// heavier abuse-prone endpoints (email send, guest PDF rendering).
 // Complements per-account lockout, which doesn't stop spraying one password across many accounts.
-// Disabled under "Testing" so the suite's many same-IP auth calls aren't throttled.
-var rateLimitingEnabled = !builder.Environment.IsEnvironment("Testing");
+// Disabled under "Testing" by default so the suite's many same-IP calls aren't throttled; a test
+// that specifically exercises 429 can force it on via RateLimiting:Enabled=true.
+var rateLimitingEnabled = builder.Configuration.GetValue<bool?>("RateLimiting:Enabled")
+    ?? !builder.Environment.IsEnvironment("Testing");
 if (rateLimitingEnabled)
 {
     builder.Services.AddRateLimiter(options =>
@@ -36,6 +39,20 @@ if (rateLimitingEnabled)
                 {
                     Window = TimeSpan.FromMinutes(1),
                     PermitLimit = 20,
+                    QueueLimit = 0
+                }));
+
+        // Guest document rendering (POST /documents/guest) renders a PDF synchronously per call —
+        // far heavier than an auth check — so it gets its own, tighter per-IP window (10/min).
+        // Purely a cost/abuse guard; unrelated to any product "free documents" limit. See
+        // x-guest-document-policy.
+        options.AddPolicy("guest", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    Window = TimeSpan.FromMinutes(1),
+                    PermitLimit = 10,
                     QueueLimit = 0
                 }));
     });
