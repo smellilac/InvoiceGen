@@ -11,6 +11,7 @@ public static class DocumentEndpoints
         var group = app.MapGroup("/documents").WithTags("documents").RequireAuthorization();
 
         MapCreate(group);
+        MapCreateGuest(group);
         MapList(group);
         MapGet(group);
         MapDelete(group);
@@ -40,6 +41,28 @@ public static class DocumentEndpoints
         .AddEndpointFilter<ValidationFilter<CreateDocumentRequest>>()
         .WithName("CreateDocument")
         .WithSummary("Create a document from the submitted form");
+    }
+
+    private static void MapCreateGuest(RouteGroupBuilder group)
+    {
+        // Unauthenticated "try before you sign up" endpoint (security: [] in openapi).
+        // AllowAnonymous overrides the group's RequireAuthorization, so no bearer token is
+        // required — this is the one /documents route that is NOT behind auth. It renders and
+        // streams the PDF directly (200 application/pdf) and persists nothing (no Document row).
+        // Rate limited per IP on its own tighter window (10/min) because PDF rendering is heavy —
+        // see x-guest-document-policy. Nothing here touches the database.
+        group.MapPost("/guest", (
+            GuestCreateDocumentRequest request,
+            CreateGuestDocumentHandler handler) =>
+        {
+            var pdf = handler.Handle(request);
+            return Results.File(pdf.Content, "application/pdf", pdf.FileName);
+        })
+        .AllowAnonymous()
+        .AddEndpointFilter<ValidationFilter<GuestCreateDocumentRequest>>()
+        .RequireRateLimiting("guest")
+        .WithName("CreateGuestDocument")
+        .WithSummary("Render a document to PDF without an account (nothing is stored)");
     }
 
     private static void MapList(RouteGroupBuilder group)

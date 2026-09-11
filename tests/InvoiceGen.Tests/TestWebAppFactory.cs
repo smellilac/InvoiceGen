@@ -13,7 +13,7 @@ namespace InvoiceGen.Tests;
 // test run, points the app's AppDbContext at it, and applies the real EF
 // migrations — so tests exercise the actual database and migrations, not a
 // SQLite stand-in. Requires a running Docker daemon.
-public sealed class TestWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class TestWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
         .Build();

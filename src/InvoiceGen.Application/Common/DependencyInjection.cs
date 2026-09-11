@@ -41,6 +41,7 @@ public static class DependencyInjection
     private static void AddDocumentsHandlers(this IServiceCollection services)
     {
         services.AddScoped<CreateDocumentHandler>();
+        services.AddScoped<CreateGuestDocumentHandler>();
         services.AddScoped<ListDocumentsHandler>();
         services.AddScoped<GetDocumentHandler>();
         services.AddScoped<DeleteDocumentHandler>();
@@ -49,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<RecordSettlementHandler>();
 
         services.AddScoped<IValidator<CreateDocumentRequest>, CreateDocumentRequestValidator>();
+        services.AddScoped<IValidator<GuestCreateDocumentRequest>, GuestCreateDocumentRequestValidator>();
         services.AddScoped<IValidator<SendDocumentRequest>, SendDocumentRequestValidator>();
     }
 

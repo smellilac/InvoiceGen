@@ -25,11 +25,22 @@ it, not the other way around.
   stores a **frozen snapshot**, never a live link (see key decisions below).
 - **Documents** (`/documents`, `/documents/{id}`, `/documents/{id}/pdf`,
   `/documents/{id}/send`) — create, list (history), get, delete, download PDF,
-  and email the PDF to a customer. Creating a document persists it first and
-  returns JSON with a `pdf_url`, rather than streaming the PDF directly back —
-  this is a deliberate difference from invoice-generator.com's API, made
-  because documents belong to a logged-in user's account and need to show up in
-  their history.
+  and email the PDF to a customer. There are **two create paths**:
+  - **Persisted create** — authenticated `POST /documents` persists the document
+    first and returns JSON with a `pdf_url`, rather than streaming the PDF
+    directly back. This is a deliberate difference from invoice-generator.com's
+    API, made because documents belong to a logged-in user's account and need to
+    show up in their history. The PDF is rendered on demand from
+    `GET /documents/{id}/pdf`.
+  - **Ephemeral guest create** — unauthenticated `POST /documents/guest`
+    (added 0.13.0) for a first-time visitor to try the product before signing
+    up. It runs the **same** totals/rounding path as `POST /documents`, but
+    persists **nothing** (no `Document` row, no history, no `id`) and streams
+    the rendered PDF **directly back** (`200 application/pdf`). Rate-limited per
+    IP with the same `429` mechanism as `/auth`, on its own tighter window
+    (10/min — PDF rendering is heavy). The per-IP limit is a cost/abuse guard
+    only; any "N free documents" product limit is a frontend concern this
+    endpoint knows nothing about. See `x-guest-document-policy`.
 - **Email delivery** (`POST /documents/{id}/send`, added 0.8.0) — emails the
   rendered PDF. **Asynchronous**: validates, resolves the recipient, enqueues,
   and returns **202 Accepted** (not a delivery confirmation). Recipient is a

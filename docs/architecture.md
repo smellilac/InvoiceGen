@@ -24,6 +24,16 @@ code/infrastructure exists, and note where reality diverges from the plan.
    text is then frozen: later customer edits never touch it (see
    `docs/decisions-log.md`). No PDF is rendered or stored at create time —
    `pdf_url` just points at the download endpoint, which renders on demand.
+   - **Guest create (ephemeral):** unauthenticated `POST /documents/guest`
+     serves a "try before you sign up" flow. It shares the *exact* validation
+     and totals code (`DocumentBuilder` + `Document.Recalculate`) with step 3,
+     but **persists nothing** — no `Document` row, no `line_items`, no `id` —
+     and renders the PDF inline, streaming the bytes straight back as
+     `200 application/pdf` (no create-then-download two-step). It carries no
+     `customer_id` and requires `from` (there's no saved profile to fall back
+     on). It's per-IP rate-limited on its own tighter window (10/min → `429`),
+     because rendering a PDF is heavier than an auth check. See
+     `x-guest-document-policy`.
 4. **History**: `GET /documents` (paginated, filterable by `type` and
    `customer_id`, ordered newest-first) backs the user's document
    list/history view.

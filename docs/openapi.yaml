@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.12.0"
+  version: "0.13.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -172,6 +172,20 @@ info:
         - A deleted user's email address is released for reuse: the same
           address can be registered again via `POST /auth/register`. No
           request/response shapes changed on other endpoints.
+      0.13.0 — Added an unauthenticated guest document flow so first-time
+        visitors can try the product before creating an account:
+        - Added `POST /documents/guest` (`security: []`). It validates the
+          request, computes totals via the SAME `x-rounding-policy` path as
+          `POST /documents`, renders the PDF, and streams it back directly
+          (`200 application/pdf`). It persists NOTHING — no `Document` row, no
+          history, no `id`. See the new `x-guest-document-policy`.
+        - Added `GuestCreateDocumentRequest`: the same shape as
+          `CreateDocumentRequest` minus `customer_id`, with `from` required
+          (no saved profile to fall back on) and no `include_logo`.
+        - Reuses the existing `429 Too Many Requests` mechanism, on its own
+          per-IP window starting at 10/minute (tighter than `/auth`'s 20/minute
+          because PDF rendering is heavier per call). This is an abuse/cost
+          guard only, unrelated to any frontend "N free documents" limit.
 
 security:
   - BearerAuth: []
@@ -422,6 +436,42 @@ x-email-delivery-policy:
     response as `/auth` (see `x-security-policy.rate_limiting`) — this
     endpoint sends email to a third party on the caller's behalf, so it
     needs the same abuse protection.
+
+x-guest-document-policy:
+  purpose: >-
+    `POST /documents/guest` lets a first-time, unauthenticated visitor generate
+    a real PDF before committing to an account — a "try before you sign up"
+    flow. It exists so the product's core value (a nicely rendered document) can
+    be experienced with zero friction.
+  no_persistence: >-
+    This endpoint is STATELESS with respect to the database: it writes NOTHING.
+    No `Document` row, no line items, no history, no `id`. It validates the
+    request, computes the totals, renders the PDF, and streams the bytes back —
+    then the in-memory document is discarded. This is the defining difference
+    from `POST /documents`, which persists first and renders on demand later.
+    Because nothing is stored, there is also nothing to later fetch, download
+    again, list, email, or settle — a guest who wants any of that must sign up
+    and use the authenticated create path.
+  calculation_reuse: >-
+    Totals are computed by the EXACT same code path as `POST /documents` — the
+    same per-line-item tax rounding and `decimal` arithmetic described in
+    `x-rounding-policy`. The guest path only skips persistence; it does not
+    re-implement (or subtly diverge from) the money math. A guest PDF and an
+    authenticated PDF built from the same inputs are identical.
+  response_shape: >-
+    Unlike `POST /documents` (which returns a JSON `Document`), this returns the
+    PDF directly as `application/pdf` with `200 OK`. There is no create-then-GET
+    two-step and no document record in the body.
+  rate_limiting: >-
+    Rate limited per client IP using the same `429 Too Many Requests` mechanism
+    as `/auth` and `/documents/{documentId}/send`, but on its OWN window,
+    starting at 10 requests/minute/IP — tighter than the 20/minute used for
+    `/auth`, because rendering a PDF is far heavier per call than an auth check,
+    so it is a bigger cost/abuse lever. This limit is purely a server-side
+    abuse/cost guard. It is UNRELATED to any "N free documents before you must
+    sign up" product limit — that is a frontend-only concern this endpoint knows
+    nothing about and does not enforce (it cannot: it stores no state to count
+    against).
 
 servers:
   - url: https://api.example.com/v1
@@ -910,6 +960,44 @@ paths:
                 $ref: '#/components/schemas/DocumentList'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /documents/guest:
+    post:
+      operationId: createGuestDocument
+      tags: [documents]
+      summary: Render a document to PDF without an account (nothing is stored)
+      security: []
+      description: |
+        The "try before you sign up" endpoint. Unauthenticated (`security: []`)
+        — a first-time visitor can fill out the form and get a real PDF before
+        creating an account.
+
+        Unlike `POST /documents`, this endpoint does NOT persist anything: no
+        `Document` row, no line items, no history. It validates the request,
+        computes the totals using the EXACT same calculation path as
+        `POST /documents` (`x-rounding-policy`: per-line-item tax, `decimal`
+        throughout), renders the PDF, and streams it straight back as the
+        response body. There is no create-then-fetch two-step and no `id` — the
+        result is the PDF itself, not a JSON record. See
+        `x-guest-document-policy` for the full rationale.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCreateDocumentRequest'
+      responses:
+        '200':
+          description: The rendered PDF, streamed directly (not stored).
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /documents/{documentId}:
     parameters:
@@ -1401,6 +1489,62 @@ components:
             `to`; see `x-customer-policy`). Set to false to create a document
             with no logo even when the profile has one. If the profile has no
             logo, this has no effect and `logo_url` is null either way.
+
+    GuestCreateDocumentRequest:
+      type: object
+      required: [type, from, to, date, items]
+      description: >-
+        The body for `POST /documents/guest` — the unauthenticated try-before-
+        you-sign-up flow. Deliberately the SAME shape as `CreateDocumentRequest`
+        with two differences: (1) `customer_id` is absent entirely — a guest has
+        no saved customers, so `to` is always plain free text; and (2) `from` is
+        REQUIRED rather than optional, because there is no signed-in business
+        profile to fall back on. Everything else — the line items, the
+        tax/discount/shipping inputs, `number`, dates, notes/terms — is
+        identical, and the totals are computed by the exact same code path
+        (`x-rounding-policy`). There is no `include_logo`: a guest has no profile
+        logo to stamp. See `x-guest-document-policy`.
+      properties:
+        type:
+          $ref: '#/components/schemas/DocumentType'
+        from:
+          type: string
+          description: "Billing organization's name/address. REQUIRED here (no saved profile to fall back on, unlike CreateDocumentRequest)."
+        to:
+          type: string
+          description: "Customer's name/address (multiline free text). Always required — a guest has no customer_id to auto-fill it from."
+        date: { type: string, format: date }
+        due_date: { type: string, format: date, nullable: true }
+        number:
+          type: string
+          nullable: true
+          description: 'Optional free-text document number, same policy as CreateDocumentRequest.number — never generated, validated, or mutated by the API.'
+        related_document_number:
+          type: string
+          nullable: true
+          description: 'Optional free-text reference, same policy as CreateDocumentRequest.related_document_number.'
+        currency: { type: string, default: "USD" }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/LineItem' }
+        tax_percent:
+          type: number
+          default: 0
+          description: 'See x-rounding-policy — applied per line item, identically to CreateDocumentRequest.'
+        discount_percent:
+          type: number
+          default: 0
+          description: 'Applied BEFORE tax — see x-rounding-policy (discount_tax_ordering).'
+        shipping_amount:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          default: 0
+        notes: { type: string }
+        terms: { type: string }
+        amount_settled:
+          allOf: [{ $ref: '#/components/schemas/MonetaryAmount' }]
+          default: 0
+          description: 'Same meaning/rules as CreateDocumentRequest.amount_settled — see x-settlement-policy.'
 
     SendDocumentRequest:
       type: object

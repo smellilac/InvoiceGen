@@ -1,7 +1,6 @@
 using ErrorOr;
 using InvoiceGen.Application.Common;
 using InvoiceGen.Domain.Entities;
-using InvoiceGen.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -62,7 +61,7 @@ public sealed class CreateDocumentHandler(
         // only when opted in and a logo is actually set. Never re-read from the profile after.
         var logoUrl = includeLogo && !string.IsNullOrWhiteSpace(user?.LogoUrl) ? user!.LogoUrl : null;
 
-        var document = BuildDocument(userId, request, from, to, logoUrl, clock.GetUtcNow());
+        var document = DocumentBuilder.Build(userId, request, from, to, logoUrl, clock.GetUtcNow());
         document.Recalculate();
 
         db.Documents.Add(document);
@@ -70,39 +69,4 @@ public sealed class CreateDocumentHandler(
 
         return DocumentDto.FromEntity(document);
     }
-
-    private static Document BuildDocument(
-        Guid userId, CreateDocumentRequest request, string from, string to, string? logoUrl, DateTimeOffset now) => new()
-    {
-        Id = Guid.NewGuid(),
-        UserId = userId,
-        CustomerId = request.CustomerId,
-        Type = request.Type,
-        Status = DocumentStatus.Generated, // PDF is rendered on demand, so always available
-        Number = request.Number,
-        RelatedDocumentNumber = request.RelatedDocumentNumber,
-        From = from,
-        To = to,
-        LogoUrl = logoUrl,
-        Currency = string.IsNullOrWhiteSpace(request.Currency) ? "USD" : request.Currency,
-        Date = request.Date,
-        DueDate = request.DueDate,
-        TaxPercent = request.TaxPercent,
-        DiscountPercent = request.DiscountPercent,
-        ShippingAmount = request.ShippingAmount,
-        AmountSettled = request.AmountSettled,
-        Notes = request.Notes,
-        Terms = request.Terms,
-        CreatedAt = now,
-        UpdatedAt = now,
-        Items = request.Items.Select(i => new LineItem
-        {
-            Id = Guid.NewGuid(),
-            Name = i.Name,
-            Description = i.Description,
-            Quantity = i.Quantity,
-            UnitCost = i.UnitCost,
-            Reference = i.Reference
-        }).ToList()
-    };
 }

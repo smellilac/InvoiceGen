@@ -32,6 +32,27 @@ public sealed record CreateDocumentRequest(
     // at creation (see Document.LogoUrl); after that it never tracks the profile.
     bool? IncludeLogo = true);
 
+// The body for the unauthenticated POST /documents/guest flow. Same shape as
+// CreateDocumentRequest minus CustomerId (a guest has no saved customers) and with From
+// required (no saved profile to fall back on). No IncludeLogo — a guest has no profile logo.
+// See GuestCreateDocumentRequest in openapi.yaml and x-guest-document-policy.
+public sealed record GuestCreateDocumentRequest(
+    DocumentType Type,
+    string From,
+    string To,
+    DateOnly Date,
+    DateOnly? DueDate,
+    string? Number,
+    string? RelatedDocumentNumber,
+    string? Currency,
+    IReadOnlyList<CreateLineItemRequest> Items,
+    decimal TaxPercent,
+    decimal DiscountPercent,
+    decimal ShippingAmount,
+    string? Notes,
+    string? Terms,
+    decimal AmountSettled);
+
 // Matches the OpenAPI `Document` schema. Echoes back every input the caller
 // submitted on CreateDocumentRequest (line items, dates, the tax/discount/shipping
 // inputs, notes/terms) alongside the computed totals, so a GET round-trips what a
