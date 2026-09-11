@@ -7,9 +7,23 @@ other types — see `docs/api-contract.md`). Users log in, pick a document
 type, fill out a form, and get a PDF. Inspired by invoice-generator.com's
 feature set, but an independent product: own backend, own data model, own UI.
 
-**Status: Phase 1 — scaffolded, pre-feature.** Solution structure exists;
-no feature endpoints implemented yet. Update this file and `docs/` as real
-implementation choices land; don't let them go stale once code exists.
+**Status: active development — core backend implemented.** The Phase 1
+feature set is built and wired end to end (Domain → Application → Infrastructure
+→ Api), backed by EF Core migrations and integration tests. Implemented today:
+
+- **Auth** (`/auth`): register, login, JWT refresh, logout, `GET`/`PATCH`/`DELETE
+  /me` (self-service account deletion), and business-logo upload/serve/delete
+  (`POST`/`DELETE /me/logo`, `GET /auth/logo/{id}`, processed via ImageSharp).
+- **Customers** (`/customers`): full CRUD — create, list, get, update, and
+  soft delete.
+- **Documents** (`/documents`): create, list, get, delete, on-demand PDF render
+  (`GET /{id}/pdf`, QuestPDF), async email send (`POST /{id}/send`, MailKit/Brevo),
+  settlement recording (`POST /{id}/settlement`), and ephemeral **guest**
+  generation for unauthenticated users (`POST /documents/guest`).
+- **Document types** (`/document-types`): list.
+
+Keep this file and `docs/` in sync as further features land; don't let them
+go stale.
 
 ## Tech stack
 
