@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Invoice App API
-  version: "0.13.0"
+  version: "0.14.0"
   description: |
     Original API specification for a new invoicing web app. It is INSPIRED BY
     invoice-generator.com (same idea: fill a form, pick a document type, get a
@@ -186,6 +186,30 @@ info:
           per-IP window starting at 10/minute (tighter than `/auth`'s 20/minute
           because PDF rendering is heavier per call). This is an abuse/cost
           guard only, unrelated to any frontend "N free documents" limit.
+      0.14.0 — Added "Continue with Google" as a second sign-in/sign-up method
+        alongside email/password:
+        - Added `POST /auth/google` (`security: []`). The client obtains a
+          Google ID token (a JWT) from Google Sign-In and posts it as
+          `{ "id_token": "<jwt>" }`. The server verifies it against Google's
+          public keys (signature, expiry, issuer, and audience against the
+          configured Google client id) — a client-decoded, unverified payload
+          is never trusted. On success it returns the SAME `AuthResponse` shape
+          as `POST /auth/login` (access + refresh token pair + user).
+        - Added `GoogleSignInRequest` (`id_token`, required).
+        - Account matching is by the verified, normalized email: an existing
+          Google-linked account logs in; an existing password account with no
+          Google link is auto-linked (safe because Google has verified the
+          email is theirs) and logged in; an unknown email creates a new,
+          password-less account with `email_verified` already true (Google
+          did the verifying). See the new `x-google-auth-policy`.
+        - A token whose `email_verified` is not true is rejected (`422`), and
+          an invalid/expired/tampered token is rejected (`401`) — no account is
+          created or linked off an unverified or unverifiable email.
+        - `POST /auth/login` now returns a distinct `409` with code
+          `account_uses_google_auth` (instead of a generic `401`) when the
+          target account was created via Google and has no password set, so the
+          frontend can steer the user to "Continue with Google" rather than
+          showing "wrong password". No other request/response shapes changed.
 
 security:
   - BearerAuth: []
@@ -388,6 +412,37 @@ x-account-policy:
     as still taken; a brand-new, unrelated account is created (it inherits
     none of the deleted account's data).
 
+x-google-auth-policy:
+  token_verification: >-
+    `POST /auth/google` accepts a Google ID token (a JWT the client obtained
+    from Google Sign-In) and verifies it SERVER-SIDE against Google's public
+    keys — checking signature, expiry, issuer, and that the audience matches
+    this app's configured Google client id. The unverified, client-decoded
+    payload is never trusted for identity. A token that fails verification
+    (invalid, expired, tampered, or wrong audience) is rejected with `401`.
+  email_must_be_verified: >-
+    The verified token must have `email_verified: true`. If it does not, the
+    request is rejected with `422` and no account is created or linked — the
+    whole point of trusting Google is that Google has confirmed the person
+    owns the email address.
+  account_matching: >-
+    Matching is by the token's verified email, using the same case-insensitive
+    normalization as `POST /auth/login`. (1) If an account already has this
+    Google `sub` stored, it logs in. (2) If a password-based account exists
+    for the email but has no Google link yet, the `sub` is stored on that row
+    (auto-link) and it logs in — no extra confirmation step, because Google
+    has already proven the email is theirs. (3) If no account matches, a new
+    account is created with the email, the Google `sub`, no password, and
+    `email_verified` already true (Google did the verifying, so any app-level
+    email-confirmation flow is skipped). In every case the response is the
+    standard `AuthResponse` (access + refresh pair + user), identical to
+    `POST /auth/login`.
+  password_login_of_google_account: >-
+    An account created via Google has no password. If someone then tries
+    `POST /auth/login` with that email, they get a distinct `409` with code
+    `account_uses_google_auth` (not the generic `invalid_credentials` 401), so
+    the frontend can prompt "Continue with Google" instead of "wrong password".
+
 x-email-delivery-policy:
   recipient_resolution: >-
     `POST /documents/{documentId}/send` needs a recipient email address,
@@ -544,6 +599,58 @@ paths:
             a lock currently surfaces as 401, indistinguishable from bad credentials),
             OR the account was deleted via DELETE /auth/me (also indistinguishable —
             see x-account-policy.login_blocked_indistinguishably).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: >-
+            The account was created via "Continue with Google" and has no
+            password (code `account_uses_google_auth`). This is deliberately
+            distinct from the `401` above so the client can steer the user to
+            Google sign-in — see x-google-auth-policy.password_login_of_google_account.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/google:
+    post:
+      operationId: googleSignIn
+      tags: [auth]
+      summary: Sign in or sign up with a Google ID token
+      description: |
+        Exchanges a Google Sign-In ID token for this app's own access +
+        refresh token pair, creating or linking a local account as needed.
+        The ID token is verified server-side against Google's public keys
+        (signature, expiry, issuer, audience). See `x-google-auth-policy`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleSignInRequest'
+      responses:
+        '200':
+          description: Signed in — account logged in, linked, or created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: >-
+            The Google ID token could not be verified (invalid, expired,
+            tampered, or wrong audience) — see
+            x-google-auth-policy.token_verification.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: >-
+            The verified token's email is not verified by Google
+            (`email_verified` is not true) — see
+            x-google-auth-policy.email_must_be_verified.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1154,9 +1261,9 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >-
-        Access token returned by `/auth/login`, `/auth/register`, or
-        `/auth/refresh`. Send as header "Authorization" with value
-        "Bearer <access_token>".
+        Access token returned by `/auth/login`, `/auth/register`,
+        `/auth/google`, or `/auth/refresh`. Send as header "Authorization" with
+        value "Bearer <access_token>".
 
   parameters:
     DocumentId:
@@ -1246,6 +1353,17 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, format: password }
+
+    GoogleSignInRequest:
+      type: object
+      required: [id_token]
+      properties:
+        id_token:
+          type: string
+          description: >-
+            The ID token (a JWT) issued by Google Sign-In on the client. It is
+            verified server-side against Google's public keys; the app never
+            trusts a client-decoded payload. See `x-google-auth-policy`.
 
     UpdateUserRequest:
       type: object
