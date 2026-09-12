@@ -15,6 +15,7 @@ public static class AuthEndpoints
 
         MapRegister(group);
         MapLogin(group);
+        MapGoogleSignIn(group);
         MapRefresh(group);
         MapLogout(group);
         MapGetMe(group);
@@ -64,6 +65,25 @@ public static class AuthEndpoints
         })
         .WithName("Login")
         .WithSummary("Log in with email and password")
+        .AllowAnonymous();
+    }
+
+    private static void MapGoogleSignIn(RouteGroupBuilder group)
+    {
+        group.MapPost("/google", async (
+            GoogleSignInRequest request,
+            GoogleSignInHandler handler,
+            IProblemDetailsService pds,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var result = await handler.HandleAsync(request, ct);
+            return result.IsError
+                ? await result.ToProblemDetails(pds, http)
+                : Results.Ok(result.Value);
+        })
+        .WithName("GoogleSignIn")
+        .WithSummary("Sign in or sign up with a Google ID token")
         .AllowAnonymous();
     }
 

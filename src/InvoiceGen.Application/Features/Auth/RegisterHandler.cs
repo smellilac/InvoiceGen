@@ -7,8 +7,7 @@ namespace InvoiceGen.Application.Features.Auth;
 // TODO maybe wrap into transaction
 public sealed class RegisterHandler(
     UserManager<AppUser> userManager,
-    IJwtTokenGenerator jwt,
-    IRefreshTokenService refresh,
+    AuthTokenIssuer tokenIssuer,
     TimeProvider clock)
 {
     public async Task<ErrorOr<AuthResponse>> HandleAsync(RegisterRequest request, CancellationToken cancellationToken)
@@ -30,8 +29,6 @@ public sealed class RegisterHandler(
         if (!result.Succeeded)
             return result.Errors.Select(e => Error.Validation(e.Code, e.Description)).ToList();
 
-        var (accessToken, expiresIn) = jwt.GenerateAccessToken(user);
-        var refreshToken = await refresh.IssueAsync(user.Id, cancellationToken);
-        return new AuthResponse(accessToken, refreshToken, "Bearer", expiresIn, AppUserDto.FromEntity(user));
+        return await tokenIssuer.IssueAsync(user, cancellationToken);
     }
 }

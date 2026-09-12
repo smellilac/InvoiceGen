@@ -26,8 +26,10 @@ public static class DependencyInjection
 
     private static void AddAuthHandlers(this IServiceCollection services)
     {
+        services.AddScoped<AuthTokenIssuer>();
         services.AddScoped<RegisterHandler>();
         services.AddScoped<LoginHandler>();
+        services.AddScoped<GoogleSignInHandler>();
         services.AddScoped<RefreshHandler>();
         services.AddScoped<LogoutHandler>();
         services.AddScoped<GetMeHandler>();

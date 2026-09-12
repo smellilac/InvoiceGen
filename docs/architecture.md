@@ -6,11 +6,22 @@ code/infrastructure exists, and note where reality diverges from the plan.
 
 ## High-level flow
 
-1. **Auth**: client obtains a JWT access/refresh pair via `/auth/login` or
-   `/auth/register`, sends `Authorization: Bearer <access_token>` on every
-   subsequent request, and refreshes via `/auth/refresh` before it expires.
-   The `/auth` group is protected by account lockout (5 fails → 5-min) and
-   per-IP rate limiting (20 req/min → `429`) — see `docs/decisions-log.md`.
+1. **Auth**: client obtains a JWT access/refresh pair via `/auth/login`,
+   `/auth/register`, or `/auth/google`, sends `Authorization: Bearer
+   <access_token>` on every subsequent request, and refreshes via
+   `/auth/refresh` before it expires. The `/auth` group is protected by account
+   lockout (5 fails → 5-min) and per-IP rate limiting (20 req/min → `429`) —
+   see `docs/decisions-log.md`.
+   - **Continue with Google:** for `POST /auth/google` the client first runs
+     Google Sign-In to get an ID token (a JWT) and posts it. The server
+     verifies the token against Google's public keys (signature, expiry,
+     issuer, audience against the configured client id — never trusting a
+     client-decoded payload), then, keyed by the verified email: logs into the
+     already-linked account, auto-links an existing password account, or
+     creates a new password-less account. It then issues our own access +
+     refresh pair through the exact same code path as password login. A token
+     whose email isn't verified by Google is rejected. See the
+     `x-google-auth-policy` block in `docs/openapi.yaml`.
 2. **Main page**: calls `GET /document-types` (public, no auth) to render
    the "what do you want to create?" picker.
 3. **Create document**: authenticated `POST /documents` with the filled-out

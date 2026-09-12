@@ -40,10 +40,12 @@ public static class DependencyInjection
             .AddEntityFrameworkStores<AppDbContext>();
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<GoogleAuthOptions>(configuration.GetSection(GoogleAuthOptions.SectionName));
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+        services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
         services.AddSingleton<IPdfRenderer, PdfRenderer>();
         services.AddSingleton<IImageProcessor, ImageSharpImageProcessor>();
 

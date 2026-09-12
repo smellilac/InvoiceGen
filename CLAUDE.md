@@ -11,7 +11,9 @@ feature set, but an independent product: own backend, own data model, own UI.
 feature set is built and wired end to end (Domain → Application → Infrastructure
 → Api), backed by EF Core migrations and integration tests. Implemented today:
 
-- **Auth** (`/auth`): register, login, JWT refresh, logout, `GET`/`PATCH`/`DELETE
+- **Auth** (`/auth`): register, login, **Google sign-in** (`POST /auth/google` —
+  "Continue with Google": verifies a Google ID token server-side, then logs into
+  / links / creates a local account), JWT refresh, logout, `GET`/`PATCH`/`DELETE
   /me` (self-service account deletion), and business-logo upload/serve/delete
   (`POST`/`DELETE /me/logo`, `GET /auth/logo/{id}`, processed via ImageSharp).
 - **Customers** (`/customers`): full CRUD — create, list, get, update, and

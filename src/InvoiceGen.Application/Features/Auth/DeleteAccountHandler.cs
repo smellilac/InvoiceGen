@@ -51,6 +51,9 @@ public sealed class DeleteAccountHandler(
         user.NormalizedEmail = userManager.NormalizeEmail(tombstone);
         user.UserName = tombstone;
         user.NormalizedUserName = userManager.NormalizeName(tombstone);
+        // Release the Google identity too (same reasoning as the email): its unique index
+        // would otherwise block the same person from signing up again via Google.
+        user.GoogleId = null;
 
         var result = await userManager.UpdateAsync(user);
         if (!result.Succeeded)

@@ -18,6 +18,14 @@ public class AppUser : IdentityUser<Guid>
     public string? DefaultCurrency { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
+    // Google account subject (`sub` claim) for users who signed in via "Continue with
+    // Google". Null for password-only accounts. Unique when set (a Google identity maps to
+    // at most one local account). PasswordHash is null for Google-only accounts (they have
+    // no password); such an account is linked to a password once it sets one, and a
+    // password account is linked to Google on first Google sign-in with the same verified
+    // email. See POST /auth/google and x-google-auth-policy in docs/openapi.yaml.
+    public string? GoogleId { get; set; }
+
     // SOFT delete (same DeletedAt convention as Customer/Document). Set by DELETE /auth/me,
     // which also tombstones Email/UserName so the address frees up for re-registration.
     // A user with DeletedAt set is treated as gone: login is refused exactly like bad

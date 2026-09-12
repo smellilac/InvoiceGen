@@ -6,12 +6,17 @@ it, not the other way around.
 
 ## Phase 1 scope (current)
 
-- **Auth** (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`,
-  `/auth/me`) — JWT access + refresh token pair, not bare API keys. Chosen
-  because this is a multi-user web app people log into, not a single-tenant
-  integration tool. Brute-force protection is two-layered: Identity account
-  lockout (5 fails → 5-min) + per-IP rate limiting on the whole `/auth` group
-  (20 req/min → `429`). See `x-security-policy` and the key decisions below.
+- **Auth** (`/auth/register`, `/auth/login`, `/auth/google`, `/auth/refresh`,
+  `/auth/logout`, `/auth/me`) — JWT access + refresh token pair, not bare API
+  keys. Chosen because this is a multi-user web app people log into, not a
+  single-tenant integration tool. **Two sign-in methods:** email/password and
+  "Continue with Google" (`POST /auth/google`) — the client posts a Google ID
+  token, the server verifies it against Google's public keys, then creates,
+  links, or logs into a local account and returns the same `AuthResponse` as
+  password login. See `x-google-auth-policy`. Brute-force protection is
+  two-layered: Identity account lockout (5 fails → 5-min) + per-IP rate
+  limiting on the whole `/auth` group (20 req/min → `429`). See
+  `x-security-policy` and the key decisions below.
 - **Document types** (`/document-types`) — public, unauthenticated. Lets the
   main page render its "what do you want to create?" choices without
   hardcoding the list client-side. The `DocumentType` set tracks

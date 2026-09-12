@@ -6,8 +6,7 @@ namespace InvoiceGen.Application.Features.Auth;
 
 public sealed class LoginHandler(
     UserManager<AppUser> userManager,
-    IJwtTokenGenerator jwt,
-    IRefreshTokenService refresh)
+    AuthTokenIssuer tokenIssuer)
 {
     public async Task<ErrorOr<AuthResponse>> HandleAsync(LoginRequest request, CancellationToken cancellationToken)
     {
@@ -22,6 +21,14 @@ public sealed class LoginHandler(
         if (user.DeletedAt is not null)
             return Error.Unauthorized("invalid_credentials", "Incorrect email or password.");
 
+        // A Google-only account (created via POST /auth/google) has no password. Rather than
+        // let CheckPasswordAsync fail with a generic "wrong password", surface a distinct code
+        // so the frontend can steer the user to "Continue with Google". Deliberately NOT the
+        // non-leaking 401 the deleted/lockout cases use — see x-google-auth-policy.
+        if (user.PasswordHash is null)
+            return Error.Conflict("account_uses_google_auth",
+                "This account was created with Google. Continue with Google to sign in.");
+
         if (await userManager.IsLockedOutAsync(user))
             return Error.Unauthorized("account_locked",
                 "This account is temporarily locked after too many failed attempts. Try again later.");
@@ -34,8 +41,6 @@ public sealed class LoginHandler(
 
         await userManager.ResetAccessFailedCountAsync(user); // clear the counter on success
 
-        var (accessToken, expiresIn) = jwt.GenerateAccessToken(user);
-        var refreshToken = await refresh.IssueAsync(user.Id, cancellationToken);
-        return new AuthResponse(accessToken, refreshToken, "Bearer", expiresIn, AppUserDto.FromEntity(user));
+        return await tokenIssuer.IssueAsync(user, cancellationToken);
     }
 }
