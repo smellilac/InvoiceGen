@@ -1,0 +1,24 @@
+# Build artifacts — regenerated inside the image, never copy from the host.
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# The Dockerfile builds only the API and its libraries; tests stay out of the
+# image (Testcontainers is for local/CI, not the production artifact).
+tests/
+
+# VCS / IDE / tooling metadata
+.git/
+.gitignore
+.idea/
+.vs/
+.vscode/
+*.user
+*.DotSettings.user
+
+# Docker + docs + local dev files that don't belong in the image
+Dockerfile
+.dockerignore
+docs/
+*.md
