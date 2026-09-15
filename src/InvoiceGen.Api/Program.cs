@@ -65,6 +65,10 @@ builder.Services.AddJwtBearerAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
+// Apply any pending EF Core migrations before serving requests (Render free tier has no
+// Pre-Deploy Command). Idempotent and skipped in the Testing environment. See MigrationExtensions.
+await app.ApplyPendingMigrationsAsync();
+
 // API docs are development-only — the OpenAPI document exposes internal structure and the
 // Scalar "Try It" panel would let anyone exercise the API. Gate both behind auth if ever
 // exposed in another environment.
