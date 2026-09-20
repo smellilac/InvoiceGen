@@ -59,7 +59,7 @@ public sealed class CreateDocumentHandler(
 
         // Freeze the profile logo URL onto the document now (a snapshot, like `to`/`from`) —
         // only when opted in and a logo is actually set. Never re-read from the profile after.
-        var logoUrl = includeLogo && !string.IsNullOrWhiteSpace(user?.LogoUrl) ? user!.LogoUrl : null;
+        var logoUrl = includeLogo && !string.IsNullOrWhiteSpace(user?.LogoUrl) ? user.LogoUrl : null;
 
         var document = DocumentBuilder.Build(userId, request, from, to, logoUrl, clock.GetUtcNow());
         document.Recalculate();

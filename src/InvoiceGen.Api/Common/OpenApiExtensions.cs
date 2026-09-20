@@ -36,7 +36,7 @@ public static class OpenApiExtensions
             };
 
             document.Components ??= new OpenApiComponents();
-            document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+            document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>(StringComparer.Ordinal);
             document.Components.SecuritySchemes["Bearer"] = scheme;
 
             document.Security ??= [];

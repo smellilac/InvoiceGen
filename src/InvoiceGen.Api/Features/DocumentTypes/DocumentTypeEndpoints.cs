@@ -12,16 +12,11 @@ public static class DocumentTypeEndpoints
         
         MapList(group);
     }
-    
+
     private static void MapList(RouteGroupBuilder group)
     {
-        group.MapGet("/",async (
-            ListDocumentTypesHandler handler,
-            CancellationToken cancellationToken) =>
-            {
-                var result = await handler.HandleAsync(cancellationToken);
-                return TypedResults.Ok(result.Value);
-            })
+        group.MapGet("/", () => 
+            TypedResults.Ok(DocumentTypesExtensions.GetAll()))
             .WithName("ListDocumentTypes")
             .WithSummary("List available document types for the main page picker")
             .Produces<DocumentTypeDto[]>(200)

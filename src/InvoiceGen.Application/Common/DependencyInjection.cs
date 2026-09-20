@@ -11,17 +11,11 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInvoiceGenApplicationLayer(this IServiceCollection services)
     {
-        services.AddDocumentTypesHandlers();
         services.AddAuthHandlers();
         services.AddDocumentsHandlers();
         services.AddCustomersHandlers();
 
         return services;
-    }
-
-    private static void AddDocumentTypesHandlers(this IServiceCollection services)
-    {
-        services.AddScoped<ListDocumentTypesHandler>();
     }
 
     private static void AddAuthHandlers(this IServiceCollection services)
