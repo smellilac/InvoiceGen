@@ -17,19 +17,19 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
             migrationBuilder.AddColumn<Vector>(
                 name: "Embedding",
                 table: "line_items",
-                type: "vector(1536)",
+                type: "vector(4096)",
                 nullable: true);
 
             migrationBuilder.AddColumn<Vector>(
                 name: "Embedding",
                 table: "documents",
-                type: "vector(1536)",
+                type: "vector(4096)",
                 nullable: true);
 
             migrationBuilder.AddColumn<Vector>(
                 name: "Embedding",
                 table: "customers",
-                type: "vector(1536)",
+                type: "vector(4096)",
                 nullable: true);
 
             migrationBuilder.CreateIndex(

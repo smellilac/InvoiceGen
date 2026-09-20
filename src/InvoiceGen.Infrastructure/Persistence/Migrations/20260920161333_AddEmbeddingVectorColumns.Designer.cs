@@ -13,7 +13,7 @@ using Pgvector;
 namespace InvoiceGen.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260920105619_AddEmbeddingVectorColumns")]
+    [Migration("20260920161333_AddEmbeddingVectorColumns")]
     partial class AddEmbeddingVectorColumns
     {
         /// <inheritdoc />
@@ -145,7 +145,7 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(80)");
 
                     b.Property<Vector>("Embedding")
-                        .HasColumnType("vector(1536)");
+                        .HasColumnType("vector(4096)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -221,7 +221,7 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .HasColumnType("date");
 
                     b.Property<Vector>("Embedding")
-                        .HasColumnType("vector(1536)");
+                        .HasColumnType("vector(4096)");
 
                     b.Property<string>("From")
                         .IsRequired()
@@ -331,7 +331,7 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<Vector>("Embedding")
-                        .HasColumnType("vector(1536)");
+                        .HasColumnType("vector(4096)");
 
                     b.Property<string>("Name")
                         .IsRequired()
