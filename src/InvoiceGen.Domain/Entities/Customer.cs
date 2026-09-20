@@ -1,3 +1,5 @@
+using Pgvector;
+
 namespace InvoiceGen.Domain.Entities;
 
 // A saved customer (address book). Owned by a user. SOFT-deleted via DeletedAt
@@ -14,6 +16,9 @@ public class Customer
     public string? Address { get; set; }
     public string? Phone { get; set; }
     public string? Notes { get; set; } // private — never rendered on a document
+
+    // Optional embedding vector for semantic search (pgvector). Null until generated.
+    public Vector? Embedding { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

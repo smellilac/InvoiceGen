@@ -31,5 +31,12 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
 
         // GET /customers filters by user_id and orders by name.
         builder.HasIndex(x => new { x.UserId, x.Name });
+
+        // pgvector embedding column (1536 dims, OpenAI text-embedding-3-small size).
+        builder.Property(x => x.Embedding).HasColumnType("vector(1536)");
+        // HNSW index for approximate nearest-neighbour search under cosine distance.
+        builder.HasIndex(x => x.Embedding)
+            .HasMethod("hnsw")
+            .HasOperators("vector_cosine_ops");
     }
 }

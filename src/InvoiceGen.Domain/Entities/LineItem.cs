@@ -1,3 +1,5 @@
+using Pgvector;
+
 namespace InvoiceGen.Domain.Entities;
 
 public class LineItem
@@ -9,6 +11,9 @@ public class LineItem
     public decimal Quantity { get; set; }
     public decimal UnitCost { get; set; }
     public string? Reference { get; set; }
+
+    // Optional embedding vector for semantic search (pgvector). Null until generated.
+    public Vector? Embedding { get; set; }
 
     public decimal LineTotal => Quantity * UnitCost;
 }

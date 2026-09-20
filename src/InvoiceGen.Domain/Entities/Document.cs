@@ -1,4 +1,5 @@
 using InvoiceGen.Domain.Enums;
+using Pgvector;
 
 namespace InvoiceGen.Domain.Entities;
 
@@ -47,6 +48,9 @@ public class Document
 
     public string? Notes { get; set; }
     public string? Terms { get; set; }
+
+    // Optional embedding vector for semantic search (pgvector). Null until generated.
+    public Vector? Embedding { get; set; }
 
     // Email send tracking (x-email-delivery-policy). SendCount counts attempts (incremented
     // at enqueue); LastSentAt/LastSendStatus/LastSendError are updated by the worker.

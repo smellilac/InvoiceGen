@@ -19,5 +19,12 @@ public sealed class LineItemConfiguration : IEntityTypeConfiguration<LineItem>
         builder.Property(x => x.UnitCost).HasPrecision(18, 2);
 
         builder.Ignore(x => x.LineTotal);
+
+        // pgvector embedding column (1536 dims, OpenAI text-embedding-3-small size).
+        builder.Property(x => x.Embedding).HasColumnType("vector(1536)");
+        // HNSW index for approximate nearest-neighbour search under cosine distance.
+        builder.HasIndex(x => x.Embedding)
+            .HasMethod("hnsw")
+            .HasOperators("vector_cosine_ops");
     }
 }

@@ -18,6 +18,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        // Enable the pgvector extension so vector columns / HNSW indexes can be created.
+        builder.HasPostgresExtension("vector");
         builder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 }

@@ -36,6 +36,13 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(x => x.Total).HasPrecision(18, 2);
         builder.Property(x => x.BalanceRemaining).HasPrecision(18, 2);
 
+        // pgvector embedding column (1536 dims, OpenAI text-embedding-3-small size).
+        builder.Property(x => x.Embedding).HasColumnType("vector(1536)");
+        // HNSW index for approximate nearest-neighbour search under cosine distance.
+        builder.HasIndex(x => x.Embedding)
+            .HasMethod("hnsw")
+            .HasOperators("vector_cosine_ops");
+
         builder.HasOne<AppUser>()
             .WithMany()
             .HasForeignKey(x => x.UserId)
