@@ -7,12 +7,14 @@ using InvoiceGen.Infrastructure.Email;
 using InvoiceGen.Infrastructure.Imaging;
 using InvoiceGen.Infrastructure.Pdf;
 using InvoiceGen.Infrastructure.Persistence;
+using InvoiceGen.Infrastructure.Search;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Pgvector.EntityFrameworkCore;
 
 namespace InvoiceGen.Infrastructure;
@@ -51,6 +53,15 @@ public static class DependencyInjection
         services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
         services.AddSingleton<IPdfRenderer, PdfRenderer>();
         services.AddSingleton<IImageProcessor, ImageSharpImageProcessor>();
+
+        // Typed HTTP client for the external Python InvoiceGen.Search service. BaseAddress comes
+        // from Search:BaseUrl; the caller's bearer token is forwarded per-request by the client.
+        services.Configure<SearchOptions>(configuration.GetSection(SearchOptions.SectionName));
+        services.AddHttpClient<SearchServiceClient>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<SearchOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl);
+        });
 
         // Email delivery: in-process queue + background worker.
         services.AddSingleton<EmailQueue>();
