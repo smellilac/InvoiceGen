@@ -2,6 +2,7 @@ using InvoiceGen.Api.Features.Auth;
 using InvoiceGen.Api.Features.Customers;
 using InvoiceGen.Api.Features.Documents;
 using InvoiceGen.Api.Features.DocumentTypes;
+using InvoiceGen.Api.Features.Search;
 
 namespace InvoiceGen.Api.Common;
 
@@ -13,6 +14,7 @@ public static class EndpointExtensions
         AuthEndpoints.Map(app);
         DocumentEndpoints.Map(app);
         CustomerEndpoints.Map(app);
+        SearchEndpoints.Map(app);
 
         return app;
     }
