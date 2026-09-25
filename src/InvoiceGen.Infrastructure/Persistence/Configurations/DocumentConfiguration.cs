@@ -36,8 +36,8 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(x => x.Total).HasPrecision(18, 2);
         builder.Property(x => x.BalanceRemaining).HasPrecision(18, 2);
 
-        // pgvector embedding column (4096 dims, Qwen3-Embedding-8B size).
-        builder.Property(x => x.Embedding).HasColumnType("vector(4096)");
+        // pgvector embedding column (1024 dims, Qwen3-Embedding-0.6B size).
+        builder.Property(x => x.Embedding).HasColumnType("vector(1024)");
         // HNSW index for approximate nearest-neighbour search under cosine distance.
         builder.HasIndex(x => x.Embedding)
             .HasMethod("hnsw")

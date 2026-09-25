@@ -145,7 +145,7 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(80)");
 
                     b.Property<Vector>("Embedding")
-                        .HasColumnType("vector(4096)");
+                        .HasColumnType("vector(1024)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -221,7 +221,7 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .HasColumnType("date");
 
                     b.Property<Vector>("Embedding")
-                        .HasColumnType("vector(4096)");
+                        .HasColumnType("vector(1024)");
 
                     b.Property<string>("From")
                         .IsRequired()
@@ -331,7 +331,7 @@ namespace InvoiceGen.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<Vector>("Embedding")
-                        .HasColumnType("vector(4096)");
+                        .HasColumnType("vector(1024)");
 
                     b.Property<string>("Name")
                         .IsRequired()
