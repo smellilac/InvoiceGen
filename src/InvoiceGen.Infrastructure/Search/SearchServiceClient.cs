@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InvoiceGen.Application.Common;
 
 namespace InvoiceGen.Infrastructure.Search;
 
@@ -10,7 +11,7 @@ namespace InvoiceGen.Infrastructure.Search;
 // per-request as Authorization: Bearer <token>, so the search service authenticates as the same
 // user that made the incoming API request — we set it on the HttpRequestMessage rather than on
 // HttpClient.DefaultRequestHeaders because the typed client instance is shared across requests.
-public sealed class SearchServiceClient(HttpClient httpClient)
+public sealed class SearchServiceClient(HttpClient httpClient) : ISearchIndexer
 {
     // The Python service speaks snake_case (query, customer_id, min_amount, ...). The app's global
     // ASP.NET JSON options don't apply to HttpClient serialization, so the wire contract with the
@@ -39,6 +40,17 @@ public sealed class SearchServiceClient(HttpClient httpClient)
 
         return await response.Content.ReadFromJsonAsync<SearchResponse>(JsonOptions, cancellationToken);
     }
+
+    // Indexes a document via POST /index so it becomes searchable. Unlike SearchAsync there is no
+    // bearer token to forward — indexing is server-initiated after a save, so the payload carries
+    // user_id explicitly for per-user scoping. Throws on a non-success status / transport failure;
+    // callers invoke this fire-and-forget and are responsible for swallowing+logging failures
+    // (indexing is best-effort — see ISearchIndexer).
+    public async Task IndexDocumentAsync(SearchIndexDocument document, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync("/index", document, JsonOptions, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
 }
 
 // Request/response shapes for POST /search — mirror the Python service's contract. Query is
@@ -56,4 +68,12 @@ public sealed record SearchRequest(
 
 public sealed record SearchResponse(IReadOnlyList<SearchResult> Results);
 
-public sealed record SearchResult(Guid DocumentId, double Score);
+public sealed record SearchResult(
+    Guid Id,
+    string? Number,
+    string? To,
+    DateOnly? Date,
+    string? Status,
+    decimal? Total,
+    string? Type,
+    double Score);

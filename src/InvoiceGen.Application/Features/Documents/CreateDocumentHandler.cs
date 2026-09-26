@@ -3,12 +3,15 @@ using InvoiceGen.Application.Common;
 using InvoiceGen.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace InvoiceGen.Application.Features.Documents;
 
 public sealed class CreateDocumentHandler(
     IAppDbContext db,
     UserManager<AppUser> userManager,
+    ISearchIndexer searchIndexer,
+    ILogger<CreateDocumentHandler> logger,
     TimeProvider clock)
 {
     public async Task<ErrorOr<DocumentDto>> HandleAsync(
@@ -67,6 +70,48 @@ public sealed class CreateDocumentHandler(
         db.Documents.Add(document);
         await db.SaveChangesAsync(cancellationToken);
 
+        // Fire-and-forget: make the freshly saved document searchable via the external search
+        // service. Deliberately NOT awaited and fully decoupled from this request — creation must
+        // behave identically whether the search service is up, down, or slow. We pass
+        // CancellationToken.None (the request token is cancelled once the response is sent) and
+        // swallow+log any failure inside the task so it can never surface to the caller.
+        IndexDocumentInBackground(document);
+
         return DocumentDto.FromEntity(document);
     }
+
+    private void IndexDocumentInBackground(Document document)
+    {
+        var indexDocument = new SearchIndexDocument(
+            document.Id,
+            document.UserId,
+            document.Type,
+            document.Number,
+            document.From,
+            document.To,
+            document.Currency,
+            document.Notes,
+            document.Terms,
+            [.. document.Items.Select(LineItemText)]);
+
+        _ = IndexSafelyAsync(indexDocument);
+    }
+
+    private async Task IndexSafelyAsync(SearchIndexDocument document)
+    {
+        try
+        {
+            await searchIndexer.IndexDocumentAsync(document, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Failed to index document {DocumentId} in the search service; it was created but is not yet searchable.",
+                document.DocumentId);
+        }
+    }
+
+    // The searchable free text for a line item: its name plus any description, skipping blanks.
+    private static string LineItemText(LineItem item) =>
+        string.Join(' ', new[] { item.Name, item.Description }.Where(s => !string.IsNullOrWhiteSpace(s)));
 }
