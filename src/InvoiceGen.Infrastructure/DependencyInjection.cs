@@ -62,6 +62,9 @@ public static class DependencyInjection
             var options = sp.GetRequiredService<IOptions<SearchOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl);
         });
+        // Expose the same typed client as the fire-and-forget indexing abstraction used by
+        // handlers in the Application layer (which can't reference this Infrastructure type).
+        services.AddTransient<ISearchIndexer>(sp => sp.GetRequiredService<SearchServiceClient>());
 
         // Email delivery: in-process queue + background worker.
         services.AddSingleton<EmailQueue>();
